@@ -21,26 +21,60 @@ LEARNING_CONCEPTS = [
         "title": "Silk Road Trade Routes",
         "description": "Compare northern vs. southern routes and the goods they carried.",
         "starter": "Guide me through the northern and southern Silk Road routes and what choices traders faced.",
+        "subtopics": [
+            "Cultural exchange and belief systems",
+            "Goods and technologies on northern vs. southern routes",
+            "Political powers influencing safe passage",
+        ],
     },
     {
         "key": "industrial_paths",
         "title": "Industrial Revolution Paths",
         "description": "Examine factory life, technology shifts, and worker responses.",
         "starter": "Help me explore how different industrial cities changed during the Industrial Revolution.",
+        "subtopics": [
+            "Factory systems and mechanisation",
+            "Urban living conditions",
+            "Worker movements and reform efforts",
+        ],
     },
     {
         "key": "civil_rights_routes",
         "title": "Civil Rights Strategies",
         "description": "Contrast direct action, legal challenges, and local organizing.",
         "starter": "Walk me through the different strategies leaders used in the Civil Rights Movement.",
+        "subtopics": [
+            "Grassroots organising and voter drives",
+            "Courtroom battles and landmark cases",
+            "Nonviolent direct action tactics",
+        ],
     },
 ]
 
 COMMUNITY_MESSAGES = [
-    "Avery just unlocked Industrial Revolution Paths—keep the momentum!",
     "Maya shared her notes on Civil Rights Strategies with the study circle.",
     "Jonas hit a three-day streak by tackling Silk Road questions daily.",
+    "Elena just wrapped a quiz on Industrial Revolution Paths—go for the next badge!",
 ]
+
+TOPIC_KEYWORDS = {
+    "silk_road": [
+        ("culture", "Cultural interactions on the Silk Road"),
+        ("cultures", "Cultural interactions on the Silk Road"),
+        ("goods", "Trade goods moving along Silk Road routes"),
+        ("religion", "Religious diffusion on the Silk Road"),
+    ],
+    "industrial_paths": [
+        ("workers", "Workers' lives during the Industrial Revolution"),
+        ("factories", "Factory systems and mechanisation"),
+        ("cities", "Urban transformations in industrial cities"),
+    ],
+    "civil_rights_routes": [
+        ("march", "Direct action marches in the Civil Rights Movement"),
+        ("court", "Courtroom strategies in the Civil Rights Movement"),
+        ("voting", "Voter registration drives in the Civil Rights Movement"),
+    ],
+}
 
 
 def load_persisted_state() -> Dict:
@@ -102,6 +136,7 @@ def init_state():
         "concept_progress": default_concept_progress,
         "community_pointer": 0,
         "challenge_active": False,
+        "topic_refresh_counter": 0,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -262,6 +297,27 @@ def rotate_community_message() -> str:
     message = COMMUNITY_MESSAGES[pointer]
     st.session_state.community_pointer = (pointer + 1) % len(COMMUNITY_MESSAGES)
     return message
+
+
+def derive_topic_label(raw_text: str, concept_key: str) -> str:
+    if not raw_text:
+        return get_concept(concept_key)["title"]
+    lowered = raw_text.lower().strip()
+    for keyword, label in TOPIC_KEYWORDS.get(concept_key, []):
+        if keyword in lowered:
+            return label
+    return get_concept(concept_key)["title"]
+
+
+def refresh_topic_periodically():
+    st.session_state.topic_refresh_counter += 1
+    if st.session_state.topic_refresh_counter >= 6:
+        recent_user = next(
+            (m.content for m in reversed(st.session_state.messages) if m.role == "user"),
+            "",
+        )
+        st.session_state.current_topic = derive_topic_label(recent_user, st.session_state.current_concept)
+        st.session_state.topic_refresh_counter = 0
 
 def build_tutor_context(personality: str, pdf_ref=None) -> str:
     context = get_personality_prompt(personality)
@@ -492,6 +548,16 @@ def sidebar_nav():
         st.markdown("### Concept progress")
         render_concept_tracker()
         st.caption(f"🤝 {rotate_community_message()}")
+        st.markdown("### Route details")
+        for concept in LEARNING_CONCEPTS:
+            progress = st.session_state.concept_progress.get(concept["key"], {"unlocked": False, "mastered": False})
+            status = "Mastered" if progress.get("mastered") else ("Unlocked" if progress.get("unlocked") else "Locked")
+            st.markdown(f"**{concept['title']}** • {status}")
+            st.caption(concept["description"])
+            if concept.get("subtopics"):
+                bullet_lines = "\n".join([f"- {item}" for item in concept["subtopics"]])
+                st.markdown(bullet_lines)
+            st.divider()
 
 def page_home():
     st.title("Welcome back 👋")
@@ -600,6 +666,7 @@ def page_chat():
                     st.session_state.question_type = None
                     st.session_state.current_topic = "General Tutoring"
                     st.session_state.intro_sent = False
+                    st.session_state.topic_refresh_counter = 0
                     st.success(f"✅ PDF uploaded: {uploaded_file.name}")
                     st.rerun()
     
@@ -619,6 +686,7 @@ def page_chat():
                     st.session_state.question_type = None
                     st.session_state.current_topic = "General Tutoring"
                     st.session_state.intro_sent = False
+                    st.session_state.topic_refresh_counter = 0
                     st.success("✅ Curriculum loaded!")
                     st.rerun()
 
@@ -650,10 +718,12 @@ def page_chat():
         st.session_state.chat_session_pdf_id = None
         st.session_state.intro_sent = False
         st.session_state.challenge_active = False
+        st.session_state.topic_refresh_counter = 0
         st.rerun()
 
     active_concept = get_concept()
-    st.session_state.current_topic = active_concept["title"]
+    if st.session_state.current_topic in ("General Tutoring", "", None):
+        st.session_state.current_topic = active_concept["title"]
     st.caption(f"🧭 {active_concept['description']}")
 
     locked_concepts = [concept for concept in LEARNING_CONCEPTS if not st.session_state.concept_progress.get(concept["key"], {}).get("unlocked")]
@@ -764,11 +834,9 @@ def page_chat():
             st.session_state.awaiting_answer = False
             st.session_state.question_type = None
         elif topic_update:
-            words = topic_update.split()
-            trimmed = " ".join(words[:8])
-            if len(words) > 8:
-                trimmed += "..."
-            st.session_state.current_topic = trimmed
+            concept_key = st.session_state.current_concept
+            st.session_state.current_topic = derive_topic_label(topic_update, concept_key)
+            st.session_state.topic_refresh_counter = 0
 
         with st.spinner("Tutor is thinking..."):
             reply = chat_with_tutor(
@@ -786,6 +854,7 @@ def page_chat():
         st.session_state.messages.append(
             Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
         )
+        refresh_topic_periodically()
         
         if question_type:
             st.session_state.awaiting_answer = True
@@ -805,6 +874,7 @@ def page_chat():
             st.session_state.chat_session_pdf_id = None
             st.session_state.intro_sent = False
             st.session_state.challenge_active = False
+            st.session_state.topic_refresh_counter = 0
             st.rerun()
     with col_b:
         if st.session_state.awaiting_answer:
