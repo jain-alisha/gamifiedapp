@@ -37,9 +37,10 @@ An intelligent, gamified tutoring platform powered by Google Gemini AI with mult
 ### 🎮 Gamification
 
 - XP system with level progression (100 XP per level)
-- Progress bars and stat tracking
-- Daily action bonuses
-- Badge system for achievements
+- Learning routes that encourage autonomy—pick which concept to explore next
+- Concept tracker highlighting your active focus in yellow, unlocked routes, and mastered topics with green checks
+- Optional challenge bonus (+10 XP) for tackling tougher questions
+- Community shout-outs and badges to reinforce motivation
 - Celebration animations on level-up
 
 ## Setup
@@ -81,10 +82,11 @@ The app will open at `http://localhost:8501` (or 8502 if 8501 is busy).
 
 ### Tutoring Chat Page
 1. **Select Personality**: Choose your preferred tutor style from the sidebar
-2. **Load Curriculum** (optional): Upload a PDF or load the built-in Unit 2 curriculum
-3. **Start Learning**: Use quick-start buttons or type your own questions
-4. **Answer Questions**: Respond to [MINI-Q] and [QUIZ] prompts to earn XP
-5. **Track Progress**: Watch your XP and level grow as you learn!
+2. **Pick a Learning Route**: Use the route selector to choose where to focus (e.g., Silk Road Trade Routes)
+3. **Load Curriculum** (optional): Upload a PDF or load the built-in Unit 2 curriculum
+4. **Start Learning**: Use the route primer, quick-start buttons, or type your own questions
+5. **Answer Questions**: Respond to [MINI-Q] and [QUIZ] prompts to earn XP. Activate the challenge toggle for a +10 XP bonus on your next correct answer.
+6. **Track Progress**: Concept tracker (sidebar) updates as you unlock and master topics.
 
 ### Earning XP
 - Socratic [MINI-Q]: +10 XP for evidence-based reasoning
@@ -94,6 +96,7 @@ The app will open at `http://localhost:8501` (or 8502 if 8501 is busy).
 - Practice button: +15 XP
 - Lesson button: +30 XP
 - Streak button: +10 XP
+- Challenge bonus: +10 XP once armed and answered correctly
 
 ## Configuration
 

@@ -15,6 +15,33 @@ except Exception:
 NEXT_LEVEL_XP = 100
 STATE_FILE = Path(__file__).with_name("state_store.json")
 
+LEARNING_CONCEPTS = [
+    {
+        "key": "silk_road",
+        "title": "Silk Road Trade Routes",
+        "description": "Compare northern vs. southern routes and the goods they carried.",
+        "starter": "Guide me through the northern and southern Silk Road routes and what choices traders faced.",
+    },
+    {
+        "key": "industrial_paths",
+        "title": "Industrial Revolution Paths",
+        "description": "Examine factory life, technology shifts, and worker responses.",
+        "starter": "Help me explore how different industrial cities changed during the Industrial Revolution.",
+    },
+    {
+        "key": "civil_rights_routes",
+        "title": "Civil Rights Strategies",
+        "description": "Contrast direct action, legal challenges, and local organizing.",
+        "starter": "Walk me through the different strategies leaders used in the Civil Rights Movement.",
+    },
+]
+
+COMMUNITY_MESSAGES = [
+    "Avery just unlocked Industrial Revolution Paths—keep the momentum!",
+    "Maya shared her notes on Civil Rights Strategies with the study circle.",
+    "Jonas hit a three-day streak by tackling Silk Road questions daily.",
+]
+
 
 def load_persisted_state() -> Dict:
     try:
@@ -49,6 +76,13 @@ def init_state():
     persisted = load_persisted_state()
     persisted_xp = persisted.get("xp", 0)
     computed_level = 1 + persisted_xp // NEXT_LEVEL_XP
+    default_concept_progress = {
+        concept["key"]: {
+            "unlocked": True if idx == 0 else False,
+            "mastered": False,
+        }
+        for idx, concept in enumerate(LEARNING_CONCEPTS)
+    }
     defaults = {
         "page": "User Home",
         "xp": persisted_xp,
@@ -63,11 +97,19 @@ def init_state():
     "chat_session": None,
     "chat_session_personality": None,
         "chat_session_pdf_id": None,
-        "intro_sent": False
+        "intro_sent": False,
+        "current_concept": LEARNING_CONCEPTS[0]["key"],
+        "concept_progress": default_concept_progress,
+        "community_pointer": 0,
+        "challenge_active": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+    active_concept = get_concept()
+    topic = st.session_state.get("current_topic")
+    if topic in ("General Tutoring", None, "") and active_concept:
+        st.session_state.current_topic = active_concept["title"]
 
 def level_progress(xp: int) -> float:
     return min((xp % NEXT_LEVEL_XP) / NEXT_LEVEL_XP, 1.0)
@@ -187,6 +229,40 @@ INTRO_PROMPTS = {
 def get_personality_prompt(personality: str) -> str:
     return PERSONALITY_PROMPTS.get(personality, PERSONALITY_PROMPTS["Direct"])
 
+
+def get_concept(key: Optional[str] = None):
+    lookup = key or st.session_state.get("current_concept")
+    for concept in LEARNING_CONCEPTS:
+        if concept["key"] == lookup:
+            return concept
+    return LEARNING_CONCEPTS[0]
+
+
+def unlock_concept(key: str):
+    progress = st.session_state.concept_progress.setdefault(key, {"unlocked": False, "mastered": False})
+    if not progress["unlocked"]:
+        progress["unlocked"] = True
+
+
+def mark_concept_mastered(key: str):
+    progress = st.session_state.concept_progress.get(key)
+    if not progress:
+        return
+    if not progress["mastered"]:
+        progress["mastered"] = True
+        index = next((idx for idx, c in enumerate(LEARNING_CONCEPTS) if c["key"] == key), None)
+        if index is not None and index + 1 < len(LEARNING_CONCEPTS):
+            next_key = LEARNING_CONCEPTS[index + 1]["key"]
+            unlock_concept(next_key)
+            st.toast("New learning route unlocked!", icon="🚀")
+
+
+def rotate_community_message() -> str:
+    pointer = st.session_state.get("community_pointer", 0) % len(COMMUNITY_MESSAGES)
+    message = COMMUNITY_MESSAGES[pointer]
+    st.session_state.community_pointer = (pointer + 1) % len(COMMUNITY_MESSAGES)
+    return message
+
 def build_tutor_context(personality: str, pdf_ref=None) -> str:
     context = get_personality_prompt(personality)
     context += "\n\nIMPORTANT: Use [MINI-Q] and [QUIZ] tags. Keep responses concise."
@@ -201,6 +277,13 @@ def build_tutor_context(personality: str, pdf_ref=None) -> str:
     if pdf_ref:
         context += (
             "\n\nCURRICULUM INTEGRATION: Use the uploaded PDF only as background knowledge. Summarise or paraphrase ideas in fresh language so the learner gets a self-contained explanation. Never quote the PDF verbatim. When a fact originated from the PDF, mention the page unobtrusively in parentheses (e.g., '(p. 4)') after your own explanation. The learner should not need to open the PDF to follow along."
+        )
+    active_concept = get_concept()
+    if active_concept:
+        context += (
+            f"\n\nACTIVE CONCEPT: Focus on '{active_concept['title']}'. "
+            f"Describe routes or decision points learners can choose between."
+            f" Starter idea: {active_concept['description']}"
         )
     return context
 
@@ -254,6 +337,12 @@ def ensure_initial_tutor_message(model):
 
     personality = st.session_state.personality
     prompt = INTRO_PROMPTS.get(personality, INTRO_PROMPTS["Direct"])
+    concept = get_concept()
+    prompt += (
+        f"\n\nActive concept: {concept['title']}. "
+        f"Offer two to three learning routes the student can choose from related to {concept['description']}"
+        " and invite them to pick one."
+    )
 
     with st.spinner("Tutor is getting ready..."):
         reply = chat_with_tutor(
@@ -330,6 +419,29 @@ def check_answer_quality(user_answer: str, question_type: str, personality: str)
         return True, 15, "Accurate recall"
     return False, 0, ""
 
+def render_concept_tracker():
+    items_html = []
+    for concept in LEARNING_CONCEPTS:
+        key = concept["key"]
+        progress = st.session_state.concept_progress.get(key, {"unlocked": False, "mastered": False})
+        is_current = key == st.session_state.current_concept
+        if progress["mastered"]:
+            state_class = "concept-chip mastered"
+            icon = "✅"
+        elif not progress["unlocked"]:
+            state_class = "concept-chip locked"
+            icon = "🔒"
+        elif is_current:
+            state_class = "concept-chip active"
+            icon = "🟡"
+        else:
+            state_class = "concept-chip available"
+            icon = "🔓"
+        label = f"{icon} {concept['title']}"
+        items_html.append(f"<div class='{state_class}'>{label}</div>")
+    tracker_html = "".join(items_html)
+    st.markdown(f"<div class='concept-tracker'>{tracker_html}</div>", unsafe_allow_html=True)
+
 def sidebar_nav():
     with st.sidebar:
         st.markdown("## 🎓 TutorQuest")
@@ -377,54 +489,61 @@ def sidebar_nav():
         st.metric("Level", st.session_state.level)
         st.metric("XP", st.session_state.xp)
         st.progress(level_progress(st.session_state.xp))
+        st.markdown("### Concept progress")
+        render_concept_tracker()
+        st.caption(f"🤝 {rotate_community_message()}")
 
 def page_home():
     st.title("Welcome back 👋")
     st.caption("Track your learning streaks, XP, and level progress.")
 
-    col1, col2, col3 = st.columns([2.2, 3.2, 1.6])
+    col_main, col_side = st.columns([2.6, 1.4])
 
-    with col1:
-        st.markdown("#### Profile")
-        st.image(
-            "https://avatars.githubusercontent.com/u/9919?s=200&v=4",
-            caption="Your Avatar",
-            use_container_width=True,
-        )
-        st.metric("Level", st.session_state.level)
-        st.metric("XP", st.session_state.xp)
+    with col_main:
+        with st.container(border=True):
+            st.subheader("Current progress")
+            st.metric("Level", st.session_state.level)
+            st.metric("XP", st.session_state.xp)
+            current = st.session_state.xp % NEXT_LEVEL_XP
+            remaining = NEXT_LEVEL_XP - current
+            st.progress(
+                level_progress(st.session_state.xp),
+                text=f"{current}/{NEXT_LEVEL_XP} • {remaining} XP to next level",
+            )
+            questions_total = len([m for m in st.session_state.messages if m.role == "user"])
+            mini_qs = len([
+                m
+                for m in st.session_state.messages
+                if hasattr(m, "metadata") and m.metadata and m.metadata.get("type") == "mini"
+            ])
+            quizzes = len([
+                m
+                for m in st.session_state.messages
+                if hasattr(m, "metadata") and m.metadata and m.metadata.get("type") == "quiz"
+            ])
+            s1, s2, s3 = st.columns(3)
+            s1.metric("Questions", questions_total)
+            s2.metric("Mini-Qs", mini_qs)
+            s3.metric("Quizzes", quizzes)
 
-    with col2:
-        st.markdown("#### Progress to next level")
-        current = st.session_state.xp % NEXT_LEVEL_XP
-        remaining = NEXT_LEVEL_XP - current
-        st.write(f"XP to next level: {remaining}")
-        st.progress(
-            level_progress(st.session_state.xp),
-            text=f"{current}/{NEXT_LEVEL_XP}",
-        )
+    with col_side:
+        with st.container(border=True):
+            st.subheader("Badges")
+            badges = ["🏅 Starter"]
+            if st.session_state.level >= 2:
+                badges.append("🎯 Focused Learner")
+            if st.session_state.level >= 5:
+                badges.append("🔥 Knowledge Seeker")
+            st.write("\n".join(badges))
         st.markdown("\n")
-        c21, c22, c23 = st.columns(3)
-        with c21:
-            st.metric("Questions", len([m for m in st.session_state.messages if m.role == "user"]))
-        with c22:
-            mini_qs = len([m for m in st.session_state.messages if hasattr(m, 'metadata') and m.metadata and m.metadata.get("type") == "mini"])
-            st.metric("Mini-Qs", mini_qs)
-        with c23:
-            quizzes = len([m for m in st.session_state.messages if hasattr(m, 'metadata') and m.metadata and m.metadata.get("type") == "quiz"])
-            st.metric("Quizzes", quizzes)
-
-    with col3:
-        st.markdown("#### Badges")
-        st.write("🏅 Starter")
-        if st.session_state.level >= 2:
-            st.write("🎯 Focused Learner")
-        if st.session_state.level >= 5:
-            st.write("🔥 Knowledge Seeker")
+        with st.container(border=True):
+            st.subheader("Next goals")
+            st.markdown("- Complete a tutor chat\n- Answer a Mini-Q\n- Finish a quiz round")
 
     st.markdown("---")
     st.subheader("Daily actions")
-    a1, a2, a3, a4 = st.columns([1.2, 1.2, 1.2, 2])
+    st.caption("Use these quick actions to keep your streak alive and unlock bonuses.")
+    a1, a2, a3, a4 = st.columns(4)
     with a1:
         if st.button("🧠 Practice +15 XP", use_container_width=True, type="primary"):
             award_xp(15, "Practice completed")
@@ -435,7 +554,14 @@ def page_home():
         if st.button("🔥 Streak +10 XP", use_container_width=True):
             award_xp(10, "Streak maintained")
     with a4:
-        st.caption("Complete actions daily.")
+        if st.session_state.challenge_active:
+            st.success("Challenge armed! Earn +10 bonus XP on your next correct answer.")
+            if st.button("Cancel challenge", use_container_width=True):
+                st.session_state.challenge_active = False
+        else:
+            if st.button("⚔️ Challenge +10 XP", use_container_width=True):
+                st.session_state.challenge_active = True
+                st.toast("Challenge armed! Answer the next question well to claim the bonus.", icon="⚡")
 
     st.info("💡 **Tip:** Chat with your AI tutor and answer questions to earn XP!")
 
@@ -496,10 +622,62 @@ def page_chat():
                     st.success("✅ Curriculum loaded!")
                     st.rerun()
 
-    st.markdown("##### Quick starts:")
-    pp1, pp2, pp3, _ = st.columns([1.4, 1.6, 1.8, 2])
     chip_query = None
     chip_topic = None
+
+    st.markdown("#### Choose your learning route")
+    unlocked_concepts = [
+        concept for concept in LEARNING_CONCEPTS if st.session_state.concept_progress.get(concept["key"], {}).get("unlocked")
+    ]
+    active_concept = get_concept()
+    titles = [concept["title"] for concept in unlocked_concepts]
+    current_index = next((idx for idx, concept in enumerate(unlocked_concepts) if concept["key"] == active_concept["key"]), 0)
+    selected_title = st.selectbox(
+        "Pick where to focus your next session:",
+        titles,
+        index=current_index,
+    )
+
+    if selected_title != active_concept["title"]:
+        selected_concept = next(concept for concept in unlocked_concepts if concept["title"] == selected_title)
+        st.session_state.current_concept = selected_concept["key"]
+        st.session_state.current_topic = selected_concept["title"]
+        st.session_state.messages = []
+        st.session_state.awaiting_answer = False
+        st.session_state.question_type = None
+        st.session_state.chat_session = None
+        st.session_state.chat_session_personality = None
+        st.session_state.chat_session_pdf_id = None
+        st.session_state.intro_sent = False
+        st.session_state.challenge_active = False
+        st.rerun()
+
+    active_concept = get_concept()
+    st.session_state.current_topic = active_concept["title"]
+    st.caption(f"🧭 {active_concept['description']}")
+
+    locked_concepts = [concept for concept in LEARNING_CONCEPTS if not st.session_state.concept_progress.get(concept["key"], {}).get("unlocked")]
+    if locked_concepts:
+        locked_titles = ", ".join(concept["title"] for concept in locked_concepts)
+        st.caption(f"🔒 Upcoming routes: {locked_titles}")
+
+    primer_col, challenge_col = st.columns([1, 1])
+    with primer_col:
+        if st.button("🎯 Route primer", use_container_width=True):
+            chip_query = active_concept["starter"]
+            chip_topic = active_concept["title"]
+    with challenge_col:
+        if st.session_state.challenge_active:
+            st.success("Challenge armed • +10 bonus XP on your next correct answer")
+            if st.button("Cancel challenge", use_container_width=True, key="cancel_challenge_chat"):
+                st.session_state.challenge_active = False
+        else:
+            if st.button("⚔️ Activate challenge", use_container_width=True):
+                st.session_state.challenge_active = True
+                st.toast("Challenge armed! Nail your next correct answer for +10 XP.", icon="⚡")
+
+    st.markdown("##### Quick starts:")
+    pp1, pp2, pp3, pp4 = st.columns([1.4, 1.6, 1.8, 2])
     
     quick_starts = {
         "Socratic": [
@@ -532,6 +710,10 @@ def page_chat():
         if st.button(starts[2][0], use_container_width=True):
             chip_query = starts[2][1]
             chip_topic = starts[2][0]
+    with pp4:
+        if st.button("✨ Surprise me", use_container_width=True):
+            chip_query = f"Give me a fresh angle on {active_concept['title']} with a question to get started."
+            chip_topic = active_concept["title"]
 
     ensure_initial_tutor_message(model)
 
@@ -556,18 +738,29 @@ def page_chat():
         with st.chat_message("user"):
             st.markdown(query)
 
-        if st.session_state.awaiting_answer and st.session_state.question_type:
+        pending_type = st.session_state.question_type
+        if st.session_state.awaiting_answer and pending_type:
             is_valid, xp, reason = check_answer_quality(
-                query, st.session_state.question_type, st.session_state.personality
+                query, pending_type, st.session_state.personality
             )
             if is_valid and xp > 0:
-                award_xp(xp, reason or f"{st.session_state.question_type.title()} response")
-                st.session_state.messages[-1].metadata = {
-                    "type": st.session_state.question_type,
+                award_xp(xp, reason or f"{pending_type.title()} response")
+                metadata = {
+                    "type": pending_type,
                     "xp_awarded": xp,
                     "reason": reason,
                     "personality": st.session_state.personality,
                 }
+                if st.session_state.challenge_active:
+                    award_xp(10, "Challenge bonus")
+                    metadata["challenge_bonus"] = 10
+                    st.session_state.challenge_active = False
+                if pending_type == "quiz":
+                    mark_concept_mastered(st.session_state.current_concept)
+                st.session_state.messages[-1].metadata = metadata
+            else:
+                if st.session_state.challenge_active:
+                    st.toast("Challenge bonus still waiting for a strong answer.", icon="⌛")
             st.session_state.awaiting_answer = False
             st.session_state.question_type = None
         elif topic_update:
@@ -606,11 +799,12 @@ def page_chat():
             st.session_state.messages = []
             st.session_state.awaiting_answer = False
             st.session_state.question_type = None
-            st.session_state.current_topic = "General Tutoring"
+            st.session_state.current_topic = get_concept()["title"]
             st.session_state.chat_session = None
             st.session_state.chat_session_personality = None
             st.session_state.chat_session_pdf_id = None
             st.session_state.intro_sent = False
+            st.session_state.challenge_active = False
             st.rerun()
     with col_b:
         if st.session_state.awaiting_answer:
@@ -627,7 +821,10 @@ def page_chat():
                 xp_label = "25 XP for quiz mastery"
             st.info(f"⏳ Awaiting answer • {xp_label}")
         else:
-            st.caption("💡 Socratic Mini-Q: 10 XP • Narrative Mini-Q: 5-10 XP • Direct Mini-Q: 15 XP • Quiz: 25 XP")
+            if st.session_state.challenge_active:
+                st.caption("⚔️ Challenge armed: next correct answer earns +10 bonus XP on top of regular rewards.")
+            else:
+                st.caption("💡 Socratic Mini-Q: 10 XP • Narrative Mini-Q: 5-10 XP • Direct Mini-Q: 15 XP • Quiz: 25 XP")
 
 def apply_styles():
     st.markdown("""
@@ -689,6 +886,37 @@ def apply_styles():
 
         .stProgress > div > div {
             border-radius: 999px;
+        }
+
+        .concept-tracker {
+            display: flex;
+            flex-direction: column;
+            gap: 0.4rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .concept-chip {
+            border-radius: 12px;
+            padding: 0.45rem 0.65rem;
+            font-weight: 600;
+            border: 1px solid rgba(27, 38, 49, 0.08);
+            background: rgba(255, 255, 255, 0.86);
+            color: #1b2631;
+        }
+
+        .concept-chip.active {
+            background: rgba(255, 215, 64, 0.35);
+            border-color: rgba(255, 182, 0, 0.4);
+        }
+
+        .concept-chip.mastered {
+            background: rgba(46, 204, 113, 0.2);
+            border-color: rgba(46, 204, 113, 0.45);
+        }
+
+        .concept-chip.locked {
+            background: rgba(189, 195, 199, 0.25);
+            color: rgba(27, 38, 49, 0.5);
         }
 
         div[data-testid="stChatMessage"] {
