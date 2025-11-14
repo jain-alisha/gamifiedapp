@@ -1,0 +1,16 @@
+[theme]
+base = "light"
+primaryColor = "#5DADE2"        # soft light blue
+secondaryBackgroundColor = "#EAF2F8"
+backgroundColor = "#F8FBFF"
+textColor = "#1B2631"
+
+[theme.sidebar]
+backgroundColor = "#EAF2F8"
+textColor = "#1B2631"
+widgetBackgroundColor = "#FFFFFF"
+widgetBorderColor = "#D6EAF8"
+skeletonBackgroundColor = "#E1ECF9"
+
+[client]
+showSidebarNavigation = true
