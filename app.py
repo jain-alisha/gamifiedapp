@@ -90,9 +90,23 @@ def load_persisted_state() -> Dict:
 
 
 def save_persisted_state():
+    messages_payload = []
+    for msg in st.session_state.get("messages", []):
+        if isinstance(msg, Message):
+            messages_payload.append({
+                "role": msg.role,
+                "content": msg.content,
+                "metadata": msg.metadata,
+            })
     data = {
         "xp": st.session_state.get("xp", 0),
         "level": st.session_state.get("level", 1),
+        "concept_progress": st.session_state.get("concept_progress", {}),
+        "current_concept": st.session_state.get("current_concept"),
+        "current_topic": st.session_state.get("current_topic"),
+        "personality": st.session_state.get("personality"),
+        "challenge_active": st.session_state.get("challenge_active", False),
+        "messages": messages_payload,
     }
     try:
         with STATE_FILE.open("w", encoding="utf-8") as f:
@@ -117,25 +131,32 @@ def init_state():
         }
         for idx, concept in enumerate(LEARNING_CONCEPTS)
     }
+    persisted_concepts = persisted.get("concept_progress")
+    if isinstance(persisted_concepts, dict):
+        for key, entry in default_concept_progress.items():
+            stored = persisted_concepts.get(key)
+            if isinstance(stored, dict):
+                entry["unlocked"] = bool(stored.get("unlocked", entry["unlocked"]))
+                entry["mastered"] = bool(stored.get("mastered", entry["mastered"]))
     defaults = {
         "page": "User Home",
         "xp": persisted_xp,
         "level": max(persisted.get("level", 1), computed_level),
         "messages": [],
-        "personality": "Socratic",
+        "personality": persisted.get("personality", "Socratic"),
         "awaiting_answer": False,
         "question_type": None,
         "pdf_uploaded": False,
-    "pdf_file_ref": None,
-        "current_topic": "General Tutoring",
-    "chat_session": None,
-    "chat_session_personality": None,
+        "pdf_file_ref": None,
+        "current_topic": persisted.get("current_topic", "General Tutoring"),
+        "chat_session": None,
+        "chat_session_personality": None,
         "chat_session_pdf_id": None,
         "intro_sent": False,
-        "current_concept": LEARNING_CONCEPTS[0]["key"],
+        "current_concept": persisted.get("current_concept", LEARNING_CONCEPTS[0]["key"]),
         "concept_progress": default_concept_progress,
         "community_pointer": 0,
-        "challenge_active": False,
+        "challenge_active": persisted.get("challenge_active", False),
         "topic_refresh_counter": 0,
     }
     for key, value in defaults.items():
@@ -145,6 +166,28 @@ def init_state():
     topic = st.session_state.get("current_topic")
     if topic in ("General Tutoring", None, "") and active_concept:
         st.session_state.current_topic = active_concept["title"]
+
+    persisted_messages = persisted.get("messages")
+    if (not st.session_state.get("messages")) and isinstance(persisted_messages, list) and persisted_messages:
+        restored = []
+        for payload in persisted_messages:
+            if not isinstance(payload, dict):
+                continue
+            role = payload.get("role")
+            content = payload.get("content")
+            if role and content is not None:
+                restored.append(
+                    Message(
+                        role=role,
+                        content=content,
+                        metadata=payload.get("metadata"),
+                    )
+                )
+        if restored:
+            st.session_state.messages = restored
+            st.session_state.intro_sent = True
+            st.session_state.awaiting_answer = False
+            st.session_state.question_type = None
 
 def level_progress(xp: int) -> float:
     return min((xp % NEXT_LEVEL_XP) / NEXT_LEVEL_XP, 1.0)
@@ -277,6 +320,7 @@ def unlock_concept(key: str):
     progress = st.session_state.concept_progress.setdefault(key, {"unlocked": False, "mastered": False})
     if not progress["unlocked"]:
         progress["unlocked"] = True
+        save_persisted_state()
 
 
 def mark_concept_mastered(key: str):
@@ -290,6 +334,7 @@ def mark_concept_mastered(key: str):
             next_key = LEARNING_CONCEPTS[index + 1]["key"]
             unlock_concept(next_key)
             st.toast("New learning route unlocked!", icon="🚀")
+        save_persisted_state()
 
 
 def rotate_community_message() -> str:
@@ -667,6 +712,7 @@ def page_chat():
                     st.session_state.current_topic = "General Tutoring"
                     st.session_state.intro_sent = False
                     st.session_state.topic_refresh_counter = 0
+                    save_persisted_state()
                     st.success(f"✅ PDF uploaded: {uploaded_file.name}")
                     st.rerun()
     
@@ -687,6 +733,7 @@ def page_chat():
                     st.session_state.current_topic = "General Tutoring"
                     st.session_state.intro_sent = False
                     st.session_state.topic_refresh_counter = 0
+                    save_persisted_state()
                     st.success("✅ Curriculum loaded!")
                     st.rerun()
 
@@ -719,6 +766,7 @@ def page_chat():
         st.session_state.intro_sent = False
         st.session_state.challenge_active = False
         st.session_state.topic_refresh_counter = 0
+        save_persisted_state()
         st.rerun()
 
     active_concept = get_concept()
@@ -741,10 +789,12 @@ def page_chat():
             st.success("Challenge armed • +10 bonus XP on your next correct answer")
             if st.button("Cancel challenge", use_container_width=True, key="cancel_challenge_chat"):
                 st.session_state.challenge_active = False
+                save_persisted_state()
         else:
             if st.button("⚔️ Activate challenge", use_container_width=True):
                 st.session_state.challenge_active = True
                 st.toast("Challenge armed! Nail your next correct answer for +10 XP.", icon="⚡")
+                save_persisted_state()
 
     st.markdown("##### Quick starts:")
     pp1, pp2, pp3, pp4 = st.columns([1.4, 1.6, 1.8, 2])
@@ -805,6 +855,7 @@ def page_chat():
         st.session_state.messages.append(
             Message(role="user", content=query, metadata=None)
         )
+        save_persisted_state()
         with st.chat_message("user"):
             st.markdown(query)
 
@@ -828,6 +879,7 @@ def page_chat():
                 if pending_type == "quiz":
                     mark_concept_mastered(st.session_state.current_concept)
                 st.session_state.messages[-1].metadata = metadata
+                save_persisted_state()
             else:
                 if st.session_state.challenge_active:
                     st.toast("Challenge bonus still waiting for a strong answer.", icon="⌛")
@@ -837,6 +889,7 @@ def page_chat():
             concept_key = st.session_state.current_concept
             st.session_state.current_topic = derive_topic_label(topic_update, concept_key)
             st.session_state.topic_refresh_counter = 0
+            save_persisted_state()
 
         with st.spinner("Tutor is thinking..."):
             reply = chat_with_tutor(
@@ -855,6 +908,7 @@ def page_chat():
             Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
         )
         refresh_topic_periodically()
+        save_persisted_state()
         
         if question_type:
             st.session_state.awaiting_answer = True
@@ -875,6 +929,7 @@ def page_chat():
             st.session_state.intro_sent = False
             st.session_state.challenge_active = False
             st.session_state.topic_refresh_counter = 0
+            save_persisted_state()
             st.rerun()
     with col_b:
         if st.session_state.awaiting_answer:

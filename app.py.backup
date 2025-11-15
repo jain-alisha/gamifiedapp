@@ -1,0 +1,305 @@
+import os
+from dataclasses import dataclass
+from typing import List, Dict, Optional
+
+import streamlit as st
+
+# Optional: load .env if present (so GEMINI_API_KEY can be set locally)
+try:
+	from dotenv import load_dotenv
+
+	load_dotenv()
+except Exception:
+	pass
+
+
+# -----------------------------
+# Utilities & state management
+# -----------------------------
+
+NEXT_LEVEL_XP = 100
+
+
+@dataclass
+class Message:
+	role: str  # "user" | "assistant" | "system"
+	content: str
+
+
+def init_state():
+	if "page" not in st.session_state:
+		st.session_state.page = "User Home"
+	if "xp" not in st.session_state:
+		st.session_state.xp = 0
+	if "level" not in st.session_state:
+		st.session_state.level = 1
+	if "messages" not in st.session_state:
+		st.session_state.messages = []
+	if "chat_ready" not in st.session_state:
+		st.session_state.chat_ready = False
+
+
+def level_progress(xp: int) -> float:
+	return min((xp % NEXT_LEVEL_XP) / NEXT_LEVEL_XP, 1.0)
+
+
+def award_xp(amount: int = 15):
+	before = st.session_state.xp
+	st.session_state.xp += amount
+
+	# Handle level up
+	new_level = 1 + st.session_state.xp // NEXT_LEVEL_XP
+	if new_level > st.session_state.level:
+		st.session_state.level = new_level
+		st.balloons()
+
+
+# -----------------------------
+# Gemini (optional)
+# -----------------------------
+
+_genai_import_error: Optional[str] = None
+try:
+	import google.generativeai as genai  # type: ignore
+except Exception as e:  # library may not be installed yet
+	_genai_import_error = str(e)
+	genai = None  # type: ignore
+
+
+def get_gemini_model():
+	"""Return a configured Gemini model or None if not available.
+
+	Reads GEMINI_API_KEY from st.secrets or environment.
+	"""
+	# Prefer environment first to avoid secrets parsing errors when not configured
+	api_key = os.getenv("GEMINI_API_KEY")
+	# Then try Streamlit secrets, guarded so missing secrets file won't crash
+	if not api_key:
+		try:
+			api_key = st.secrets.get("GEMINI_API_KEY")  # type: ignore[attr-defined]
+		except Exception:
+			api_key = None
+
+	if not api_key or genai is None:
+		return None
+
+	try:
+		genai.configure(api_key=api_key)
+		# Use a fast, cost-effective model by default; adjust as needed
+		return genai.GenerativeModel("gemini-1.5-flash")
+	except Exception:
+		return None
+
+
+def gemini_respond(model, prompt: str, history: List[Message]) -> str:
+	"""Get a response from Gemini with lightweight history handling.
+
+	If the chat session cannot be persisted, we reconstruct from history.
+	"""
+	try:
+		# Build a simple chat history for context
+		chat_history = []
+		for m in history:
+			if m.role in ("user", "model", "assistant"):
+				role = "user" if m.role == "user" else "model"
+				chat_history.append({"role": role, "parts": [m.content]})
+
+		chat = model.start_chat(history=chat_history)
+		response = chat.send_message(prompt)
+		# google-generativeai returns .text on generate_content, while
+		# chat.send_message returns a response object with .text as well
+		return getattr(response, "text", None) or ""
+	except Exception as e:
+		return f"(Gemini error) {e}"
+
+
+# -----------------------------
+# UI Components
+# -----------------------------
+
+
+def sidebar_nav():
+	with st.sidebar:
+		st.markdown("## TutorQuest")
+		st.caption("Gamified tutoring, powered by AI")
+		page = st.radio(
+			"Navigate",
+			["User Home", "Tutoring Chat"],
+			index=0 if st.session_state.page == "User Home" else 1,
+		)
+		st.session_state.page = page
+
+		st.divider()
+		# XP quick glance
+		st.metric("Level", st.session_state.level)
+		st.metric("XP", st.session_state.xp)
+		st.progress(level_progress(st.session_state.xp))
+
+
+def page_home():
+	st.title("Welcome back 👋")
+	st.caption("Track your learning streaks, XP, and level progress.")
+
+	# Top row: Profile card | Progress card | Badges
+	col1, col2, col3 = st.columns([2.2, 3.2, 1.6])
+
+	with col1:
+		st.markdown("#### Profile")
+		st.image(
+			"https://avatars.githubusercontent.com/u/9919?s=200&v=4",
+			caption="Your Avatar",
+			use_container_width=True,
+		)
+		st.metric("Level", st.session_state.level)
+		st.metric("XP", st.session_state.xp)
+
+	with col2:
+		st.markdown("#### Progress to next level")
+		current = st.session_state.xp % NEXT_LEVEL_XP
+		remaining = NEXT_LEVEL_XP - current
+		st.write(f"XP to next level: {remaining}")
+		st.progress(
+			level_progress(st.session_state.xp),
+			text=f"{current}/{NEXT_LEVEL_XP}",
+		)
+		st.markdown("\n")
+		c21, c22, c23 = st.columns(3)
+		with c21:
+			st.metric("Streak", "3 days")
+		with c22:
+			st.metric("Lessons", "5")
+		with c23:
+			st.metric("Quizzes", "8")
+
+	with col3:
+		st.markdown("#### Badges")
+		st.write("🏅 Starter")
+		if st.session_state.level >= 2:
+			st.write("🎯 Focused Learner")
+
+	st.markdown("---")
+
+	st.subheader("Daily actions")
+	a1, a2, a3, a4 = st.columns([1.2, 1.2, 1.2, 2])
+	with a1:
+		if st.button("🧠 Practice +15 XP", use_container_width=True, type="primary"):
+			award_xp(15)
+	with a2:
+		if st.button("📘 Lesson +30 XP", use_container_width=True):
+			award_xp(30)
+	with a3:
+		if st.button("🔥 Streak +10 XP", use_container_width=True):
+			award_xp(10)
+	with a4:
+		st.caption("Complete actions daily to keep your streak alive.")
+
+	st.info(
+		"Tip: Head to Tutoring Chat to ask questions, get hints, and earn XP by completing tasks."
+	)
+
+
+def page_chat():
+	st.title("Tutoring Chat 💬")
+	st.caption("Ask questions, get explanations, and earn XP as you learn.")
+
+	model = get_gemini_model()
+
+	if model is None:
+		# Share clear guidance on enabling Gemini
+		if _genai_import_error:
+			st.warning(
+				"Gemini not available yet. Install dependencies and set GEMINI_API_KEY to enable AI responses."
+			)
+		else:
+			st.warning(
+				"Set GEMINI_API_KEY in your environment or Streamlit secrets to enable AI tutor replies."
+			)
+
+	# Quick prompt chips
+	pp1, pp2, pp3, _ = st.columns([1.4, 1.6, 1.8, 2])
+	chip_query = None
+	with pp1:
+		if st.button("What is a derivative?", use_container_width=True):
+			chip_query = "Explain derivatives simply."
+	with pp2:
+		if st.button("Factor x^2+5x+6", use_container_width=True):
+			chip_query = "Help me factor x^2+5x+6."
+	with pp3:
+		if st.button("Physics: Newton's laws", use_container_width=True):
+			chip_query = "Summarize Newton's three laws with examples."
+
+	# Messages container with border
+	with st.container(border=True):
+		for m in st.session_state.messages:
+			with st.chat_message(m["role"]):
+				st.markdown(m["content"])
+
+	user_input = st.chat_input("Type your question…")
+	query = chip_query or user_input
+	if query:
+		st.session_state.messages.append({"role": "user", "content": query})
+		with st.chat_message("user"):
+			st.markdown(query)
+
+		# Generate assistant reply
+		reply = ""
+		if model is not None:
+			reply = gemini_respond(
+				model,
+				query,
+				[Message(**m) for m in st.session_state.messages if m["role"] != "system"],
+			)
+		else:
+			reply = (
+				"AI tutor is not enabled yet. Add your GEMINI_API_KEY to start chatting.\n\n"
+				"For now: Try asking study questions like 'Explain Pythagorean theorem' or 'Help me factor x^2+5x+6'."
+			)
+
+		with st.chat_message("assistant"):
+			st.markdown(reply)
+		st.session_state.messages.append({"role": "assistant", "content": reply})
+
+		# Reward small XP for engaging
+		award_xp(5)
+
+	col_a, col_b = st.columns([1, 1])
+	with col_a:
+		if st.button("Reset chat", use_container_width=True):
+			st.session_state.messages = []
+			st.rerun()
+	with col_b:
+		st.caption("Earn +5 XP per meaningful question.")
+
+
+def apply_subtle_styles():
+	# Extra polish to nudge the theme toward light-blue without heavy overrides
+	st.markdown(
+		"""
+		<style>
+	.stApp header { backdrop-filter: blur(6px); }
+	.block-container { padding-top: 1.25rem; }
+	/* Chat message spacing */
+	.stChatMessage { gap: 0.25rem; }
+		</style>
+		""",
+		unsafe_allow_html=True,
+	)
+
+
+def main():
+	st.set_page_config(
+		page_title="TutorQuest", page_icon="🎓", layout="wide", initial_sidebar_state="expanded"
+	)
+	init_state()
+	apply_subtle_styles()
+
+	sidebar_nav()
+
+	if st.session_state.page == "User Home":
+		page_home()
+	else:
+		page_chat()
+
+
+if __name__ == "__main__":
+	main()
