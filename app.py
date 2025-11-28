@@ -5,6 +5,7 @@ from typing import List, Dict, Optional
 from pathlib import Path
 
 import streamlit as st
+import db
 
 try:
     from dotenv import load_dotenv
@@ -113,6 +114,15 @@ def save_persisted_state():
             json.dump(data, f)
     except Exception:
         st.warning("Unable to persist XP locally.")
+    # Also persist to SQLite for logged-in users
+    try:
+        user_id = st.session_state.get("user_id")
+        if user_id:
+            # store same payload to DB
+            db.save_user_state(user_id, data)
+    except Exception:
+        # non-fatal: DB persistence shouldn't break UI
+        pass
 
 @dataclass
 class Message:
@@ -1093,6 +1103,46 @@ def apply_styles():
         </style>
         """, unsafe_allow_html=True)
 
+def show_login_page():
+    st.title("Sign in to TutorQuest")
+    st.write("Create an account or sign in to persist your progress across devices.")
+    with st.form("auth_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        col1, col2 = st.columns(2)
+        with col1:
+            login = st.form_submit_button("Sign in")
+        with col2:
+            register = st.form_submit_button("Register")
+    if login and username and password:
+        user_id = db.authenticate_user(username.strip(), password)
+        if user_id:
+            st.session_state.user_id = user_id
+            st.session_state.username = username.strip()
+            st.success("Signed in successfully")
+            # load DB state if present
+            state = db.get_user_state(user_id)
+            if isinstance(state, dict):
+                # merge into session state keys we care about
+                for k, v in state.items():
+                    if k in ("xp", "level", "concept_progress", "current_concept", "current_topic", "messages", "personality", "challenge_active"):
+                        st.session_state[k] = v
+                st.session_state.db_state_loaded = True
+            st.experimental_rerun()
+        else:
+            st.error("Invalid username or password.")
+    if register and username and password:
+        created = db.create_user(username.strip(), password)
+        if created:
+            st.session_state.user_id = created
+            st.session_state.username = username.strip()
+            st.success("Account created and signed in.")
+            # persist current app state into the newly created user
+            save_persisted_state()
+            st.experimental_rerun()
+        else:
+            st.error("Could not create account (username may already exist).")
+
 def main():
     st.set_page_config(
         page_title="TutorQuest",
@@ -1100,9 +1150,31 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
+    # ensure DB exists
+    try:
+        db.init_db()
+    except Exception:
+        pass
     init_state()
     apply_styles()
     sidebar_nav()
+
+    # If user is not signed in, show login/register page
+    if not st.session_state.get("user_id"):
+        show_login_page()
+        return
+
+    # If logged in and DB has stored state, load it once
+    if st.session_state.get("user_id") and not st.session_state.get("db_state_loaded"):
+        try:
+            state = db.get_user_state(st.session_state["user_id"])
+            if isinstance(state, dict):
+                for k, v in state.items():
+                    if k in ("xp", "level", "concept_progress", "current_concept", "current_topic", "messages", "personality", "challenge_active"):
+                        st.session_state[k] = v
+                st.session_state.db_state_loaded = True
+        except Exception:
+            pass
 
     if st.session_state.page == "User Home":
         page_home()
