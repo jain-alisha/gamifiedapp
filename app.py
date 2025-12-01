@@ -70,9 +70,9 @@ LEARNING_CONCEPTS = [
 ]
 
 COMMUNITY_MESSAGES = [
-    "Maya shared her notes on Civil Rights Strategies with the study circle.",
+    "Maya shared her notes on Silk Road cultural exchanges with the study circle.",
     "Jonas hit a three-day streak by tackling Silk Road questions daily.",
-    "Elena just wrapped a quiz on Industrial Revolution Paths—go for the next badge!",
+    "Elena just wrapped a quiz on the Northern Route—go for the next badge!",
 ]
 
 TOPIC_KEYWORDS = {
@@ -81,16 +81,10 @@ TOPIC_KEYWORDS = {
         ("cultures", "Cultural interactions on the Silk Road"),
         ("goods", "Trade goods moving along Silk Road routes"),
         ("religion", "Religious diffusion on the Silk Road"),
-    ],
-    "industrial_paths": [
-        ("workers", "Workers' lives during the Industrial Revolution"),
-        ("factories", "Factory systems and mechanisation"),
-        ("cities", "Urban transformations in industrial cities"),
-    ],
-    "civil_rights_routes": [
-        ("march", "Direct action marches in the Civil Rights Movement"),
-        ("court", "Courtroom strategies in the Civil Rights Movement"),
-        ("voting", "Voter registration drives in the Civil Rights Movement"),
+        ("northern", "Northern Silk Road route"),
+        ("southern", "Southern Silk Road route"),
+        ("trade", "Trade networks of the Silk Road"),
+        ("empire", "Empires along the Silk Road"),
     ],
 }
 
@@ -120,7 +114,9 @@ def save_persisted_state():
         "xp": st.session_state.get("xp", 0),
         "level": st.session_state.get("level", 1),
         "concept_progress": st.session_state.get("concept_progress", {}),
+        "subtopic_progress": st.session_state.get("subtopic_progress", {}),
         "current_concept": st.session_state.get("current_concept"),
+        "current_subtopic": st.session_state.get("current_subtopic"),
         "current_topic": st.session_state.get("current_topic"),
         "personality": st.session_state.get("personality"),
         "challenge_active": st.session_state.get("challenge_active", False),
@@ -151,6 +147,7 @@ def init_state():
     persisted = load_persisted_state()
     persisted_xp = persisted.get("xp", 0)
     computed_level = 1 + persisted_xp // NEXT_LEVEL_XP
+    
     # Initialize subtopic progress for Silk Road
     default_subtopic_progress = {}
     for subtopic in LEARNING_CONCEPTS[0]["subtopics"]:
@@ -158,7 +155,7 @@ def init_state():
             "unlocked": subtopic.get("unlocked", False),
             "mastered": subtopic.get("mastered", False),
         }
-
+    
     default_concept_progress = {
         concept["key"]: {
             "unlocked": True if idx == 0 else False,
@@ -166,6 +163,7 @@ def init_state():
         }
         for idx, concept in enumerate(LEARNING_CONCEPTS)
     }
+    
     persisted_concepts = persisted.get("concept_progress")
     if isinstance(persisted_concepts, dict):
         for key, entry in default_concept_progress.items():
@@ -173,6 +171,15 @@ def init_state():
             if isinstance(stored, dict):
                 entry["unlocked"] = bool(stored.get("unlocked", entry["unlocked"]))
                 entry["mastered"] = bool(stored.get("mastered", entry["mastered"]))
+    
+    persisted_subtopics = persisted.get("subtopic_progress")
+    if isinstance(persisted_subtopics, dict):
+        for key, entry in default_subtopic_progress.items():
+            stored = persisted_subtopics.get(key)
+            if isinstance(stored, dict):
+                entry["unlocked"] = bool(stored.get("unlocked", entry["unlocked"]))
+                entry["mastered"] = bool(stored.get("mastered", entry["mastered"]))
+    
     defaults = {
         "page": "User Home",
         "xp": persisted_xp,
@@ -196,10 +203,12 @@ def init_state():
         "challenge_active": persisted.get("challenge_active", False),
         "topic_refresh_counter": 0,
         "editing_message_idx": None,
+        "db_state_loaded": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+    
     active_concept = get_concept()
     topic = st.session_state.get("current_topic")
     if topic in ("General Tutoring", None, "") and active_concept:
@@ -240,6 +249,7 @@ def award_xp(amount: int = 15, reason: str = ""):
     if reason:
         st.toast(f"+{amount} XP: {reason}", icon="⭐")
     save_persisted_state()
+    st.rerun()  # Force immediate UI update
 
 _genai_import_error: Optional[str] = None
 try:
@@ -305,7 +315,7 @@ Always:
 - Reward thoughtful or empathetic responses with XP (+10 XP for accurate historical insight, +5 XP for creative engagement).
 - Reveal what actually happened and explain its significance after the student responds.
 - Keep story segments to three to five interactions, then recap key facts.
-    - When challenge mode is activated, present a difficult [QUIZ] question that requires synthesis and deep understanding.
+- When challenge mode is activated, present a difficult scenario-based [QUIZ] question that tests deep contextual understanding.
 
 Tone: cinematic, engaging, vivid. Avoid dry fact lists.
 
@@ -315,7 +325,6 @@ Tagging rules:
 - Challenge questions should always be [QUIZ] tagged.
 ''',
 
-
     "Direct": '''You are a direct, structured history tutor who delivers curriculum-aligned lessons clearly and efficiently.
 
 Always:
@@ -324,13 +333,13 @@ Always:
 - After each chunk, ask a quick comprehension check tagged with [MINI-Q] and award +15 XP for correct answers.
 - Provide immediate, friendly feedback and short corrections, including optional hints.
 - End each topic with a three to five question [QUIZ] that reinforces key facts, award 25 XP for correct answers, and highlight module completion.
-- When challenge mode is activated, present a difficult [QUIZ] question that requires synthesis and deep understanding.
+- When challenge mode is activated, present a comprehensive [QUIZ] question that requires synthesis across multiple concepts.
 
 Tone: friendly, clear, supportive — like a teacher reviewing notes alongside the student.
 
 Tagging rules:
-- Use [MINI-Q] for short checks (award 10–15 XP depending on the personality guidance).
-- Use [QUIZ] for mastery checks (25 XP for correct answers).
+- Use [MINI-Q] for comprehension checks worth 15 XP.
+- Use [QUIZ] for mastery assessments worth 25 XP.
 - Challenge questions should always be [QUIZ] tagged.
 '''
 }
@@ -365,24 +374,26 @@ def get_concept(key: Optional[str] = None):
     return LEARNING_CONCEPTS[0]
 
 
-def unlock_concept(key: str):
-    progress = st.session_state.concept_progress.setdefault(key, {"unlocked": False, "mastered": False})
+def unlock_subtopic(key: str):
+    progress = st.session_state.subtopic_progress.setdefault(key, {"unlocked": False, "mastered": False})
     if not progress["unlocked"]:
         progress["unlocked"] = True
         save_persisted_state()
 
 
-def mark_concept_mastered(key: str):
-    progress = st.session_state.concept_progress.get(key)
+def mark_subtopic_mastered(key: str):
+    progress = st.session_state.subtopic_progress.get(key)
     if not progress:
         return
     if not progress["mastered"]:
         progress["mastered"] = True
-        index = next((idx for idx, c in enumerate(LEARNING_CONCEPTS) if c["key"] == key), None)
-        if index is not None and index + 1 < len(LEARNING_CONCEPTS):
-            next_key = LEARNING_CONCEPTS[index + 1]["key"]
-            unlock_concept(next_key)
-            st.toast("New learning route unlocked!", icon="🚀")
+        # Unlock next subtopic
+        subtopics = LEARNING_CONCEPTS[0]["subtopics"]
+        index = next((idx for idx, s in enumerate(subtopics) if s["key"] == key), None)
+        if index is not None and index + 1 < len(subtopics):
+            next_key = subtopics[index + 1]["key"]
+            unlock_subtopic(next_key)
+            st.toast("New subtopic unlocked!", icon="🚀")
         save_persisted_state()
 
 
@@ -590,16 +601,17 @@ def render_concept_tracker():
             icon = "🟢"
         elif is_current:
             state_class = "concept-chip active"
-            icon = "�"
+            icon = "🟡"
         elif not progress.get("unlocked"):
             state_class = "concept-chip locked"
             icon = "⚫"
         else:
             state_class = "concept-chip available"
-            icon = "�"
+            icon = "🔵"
         
         label = f"{icon} {subtopic['title']}"
-        items_html.append(f"<div class='{state_class}'>{label}</div>")
+        desc = f"<div style='font-size: 0.8em; color: #666; margin-left: 1.5em;'>{subtopic['description']}</div>"
+        items_html.append(f"<div class='{state_class}'>{label}</div>{desc}")
     
     tracker_html = "".join(items_html)
     st.markdown(f"<div class='concept-tracker'>{tracker_html}</div>", unsafe_allow_html=True)
@@ -610,12 +622,18 @@ def sidebar_nav():
         username = st.session_state.get("username", "Guest")
         st.caption(f"Welcome, **{username}**!")
         
-        page = st.radio(
-            "Navigate",
-            ["User Home", "Tutoring Chat"],
-            index=0 if st.session_state.page == "User Home" else 1,
-        )
-        st.session_state.page = page
+        # Navigation buttons
+        st.markdown("### Navigate")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🏠 Home", use_container_width=True, type="primary" if st.session_state.page == "User Home" else "secondary"):
+                st.session_state.page = "User Home"
+                st.rerun()
+        with col2:
+            if st.button("💬 Chat", use_container_width=True, type="primary" if st.session_state.page == "Tutoring Chat" else "secondary"):
+                st.session_state.page = "Tutoring Chat"
+                st.rerun()
+        
         st.divider()
         
         if st.session_state.page == "Tutoring Chat":
@@ -623,37 +641,40 @@ def sidebar_nav():
             personalities = ["Socratic", "Narrative", "Direct"]
             if st.session_state.personality not in personalities:
                 st.session_state.personality = "Socratic"
-            personality = st.selectbox(
-                "Select teaching style:",
-                personalities,
-                index=personalities.index(st.session_state.personality),
-                help="Choose how your tutor teaches"
-            )
-            if personality != st.session_state.personality:
-                st.session_state.personality = personality
-                st.session_state.chat_session = None
-                st.session_state.chat_session_personality = None
-                st.session_state.chat_session_pdf_id = None
-                st.session_state.messages = []
-                st.session_state.awaiting_answer = False
-                st.session_state.question_type = None
-                st.session_state.current_topic = "General Tutoring"
-                st.session_state.intro_sent = False
-                st.rerun()
             
             descriptions = {
                 "Socratic": "📚 Guides you with layered questions",
                 "Narrative": "📖 Immerses you in historical stories",
                 "Direct": "🎯 Delivers clear, structured lessons"
             }
-            st.caption(descriptions[personality])
+            
+            # Use buttons instead of selectbox for personality
+            for p in personalities:
+                is_active = st.session_state.personality == p
+                button_type = "primary" if is_active else "secondary"
+                if st.button(f"{p}", use_container_width=True, type=button_type, key=f"personality_{p}"):
+                    if p != st.session_state.personality:
+                        st.session_state.personality = p
+                        st.session_state.chat_session = None
+                        st.session_state.chat_session_personality = None
+                        st.session_state.chat_session_pdf_id = None
+                        st.session_state.messages = []
+                        st.session_state.awaiting_answer = False
+                        st.session_state.question_type = None
+                        st.session_state.current_topic = "General Tutoring"
+                        st.session_state.intro_sent = False
+                        save_persisted_state()
+                        st.rerun()
+            
+            st.caption(descriptions[st.session_state.personality])
             st.divider()
         
         st.metric("Level", st.session_state.level)
         st.metric("XP", st.session_state.xp)
         st.progress(level_progress(st.session_state.xp))
-        st.markdown("### Concept progress")
+        st.markdown("### Silk Road Progress")
         render_concept_tracker()
+        
         st.divider()
         
         # User card at bottom
@@ -663,29 +684,9 @@ def sidebar_nav():
             st.markdown(f"**{username}**")
             st.caption(f"Level {st.session_state.level} • {st.session_state.xp} XP")
             if st.button("Sign Out", use_container_width=True, type="secondary"):
-                # start sign-out confirmation flow
-                st.session_state.signout_pending = True
-
-            # Confirmation UI
-            if st.session_state.get("signout_pending"):
-                st.warning("Are you sure you want to sign out? Your progress will be saved locally before signing out.")
-                c1, c2 = st.columns([1, 1])
-                with c1:
-                    if st.button("Confirm sign out", key="confirm_signout"):
-                        # persist state locally and to DB (if logged in) before clearing
-                        try:
-                            save_persisted_state()
-                        except Exception:
-                            pass
-                        # clear session state
-                        for key in list(st.session_state.keys()):
-                            del st.session_state[key]
-                        # signed out; rerun to show login
-                        st.experimental_rerun()
-                with c2:
-                    if st.button("Cancel", key="cancel_signout"):
-                        st.session_state.signout_pending = False
-                        st.rerun()
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                st.rerun()
 
 def page_home():
     st.title("Welcome back 👋")
@@ -748,14 +749,12 @@ def page_home():
         if st.button("🔥 Streak +10 XP", use_container_width=True):
             award_xp(10, "Streak maintained")
     with a4:
-        if st.session_state.challenge_active:
-            st.success("Challenge armed! Earn +10 bonus XP on your next correct answer.")
-            if st.button("Cancel challenge", use_container_width=True):
-                st.session_state.challenge_active = False
-        else:
-            if st.button("⚔️ Challenge +10 XP", use_container_width=True):
-                st.session_state.challenge_active = True
-                st.toast("Challenge armed! Answer the next question well to claim the bonus.", icon="⚡")
+        if st.button("⚔️ Challenge Question", use_container_width=True, help="Navigate to tutor and receive a tough question for bonus XP"):
+            st.session_state.page = "Tutoring Chat"
+            st.session_state.challenge_active = True
+            st.toast("Challenge armed! Head to Tutoring Chat to get your tough question.", icon="⚡")
+            save_persisted_state()
+            st.rerun()
 
     st.info("💡 **Tip:** Chat with your AI tutor and answer questions to earn XP!")
 
@@ -823,48 +822,16 @@ def page_chat():
     chip_query = None
     chip_topic = None
 
-    st.markdown("#### Choose your learning route")
-    unlocked_concepts = [
-        concept for concept in LEARNING_CONCEPTS if st.session_state.concept_progress.get(concept["key"], {}).get("unlocked")
-    ]
-    active_concept = get_concept()
-    titles = [concept["title"] for concept in unlocked_concepts]
-    current_index = next((idx for idx, concept in enumerate(unlocked_concepts) if concept["key"] == active_concept["key"]), 0)
-    selected_title = st.selectbox(
-        "Pick where to focus your next session:",
-        titles,
-        index=current_index,
-    )
-
-    if selected_title != active_concept["title"]:
-        selected_concept = next(concept for concept in unlocked_concepts if concept["title"] == selected_title)
-        st.session_state.current_concept = selected_concept["key"]
-        st.session_state.current_topic = selected_concept["title"]
-        st.session_state.messages = []
-        st.session_state.awaiting_answer = False
-        st.session_state.question_type = None
-        st.session_state.chat_session = None
-        st.session_state.chat_session_personality = None
-        st.session_state.chat_session_pdf_id = None
-        st.session_state.intro_sent = False
-        st.session_state.challenge_active = False
-        st.session_state.topic_refresh_counter = 0
-        save_persisted_state()
-        st.rerun()
-
+    st.markdown("#### Silk Road Learning Routes")
+    
     active_concept = get_concept()
     if st.session_state.current_topic in ("General Tutoring", "", None):
         st.session_state.current_topic = active_concept["title"]
     st.caption(f"🧭 {active_concept['description']}")
 
-    locked_concepts = [concept for concept in LEARNING_CONCEPTS if not st.session_state.concept_progress.get(concept["key"], {}).get("unlocked")]
-    if locked_concepts:
-        locked_titles = ", ".join(concept["title"] for concept in locked_concepts)
-        st.caption(f"🔒 Upcoming routes: {locked_titles}")
-
     primer_col, challenge_col = st.columns([1, 1])
     with primer_col:
-        if st.button("🎯 Route primer", use_container_width=True):
+        if st.button("🎯 Route primer", use_container_width=True, help="Get an overview and learning roadmap for the Silk Road topic"):
             chip_query = active_concept["starter"]
             chip_topic = active_concept["title"]
     with challenge_col:
@@ -874,30 +841,27 @@ def page_chat():
                 st.session_state.challenge_active = False
                 save_persisted_state()
         else:
-            if st.button("⚔️ Challenge Question", use_container_width=True, help="Navigate to tutor and receive a tough question for bonus XP"):
-                st.session_state.page = "Tutoring Chat"
+            if st.button("⚔️ Challenge Question", use_container_width=True, help="Receive a tough question for bonus XP"):
                 st.session_state.challenge_active = True
                 # Prompt tutor for challenge question
-                model = get_gemini_model()
-                if model:
-                    challenge_prompt = (
-                        "Present a challenging [QUIZ] question that tests deep understanding of "
-                        f"{st.session_state.current_topic}. Make it thought-provoking and worthy of bonus XP. "
-                        "The student has activated challenge mode."
-                    )
-                    reply = chat_with_tutor(
-                        model,
-                        st.session_state.personality,
-                        challenge_prompt,
-                        st.session_state.pdf_file_ref
-                    )
-                    clean_reply, question_type = parse_tutor_response(reply)
-                    st.session_state.messages.append(
-                        Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
-                    )
-                    st.session_state.awaiting_answer = True
-                    st.session_state.question_type = question_type or "quiz"
-                    save_persisted_state()
+                challenge_prompt = (
+                    "Present a challenging [QUIZ] question that tests deep understanding of "
+                    f"{st.session_state.current_topic}. Make it thought-provoking and worthy of bonus XP. "
+                    "The student has activated challenge mode."
+                )
+                reply = chat_with_tutor(
+                    model,
+                    st.session_state.personality,
+                    challenge_prompt,
+                    st.session_state.pdf_file_ref
+                )
+                clean_reply, question_type = parse_tutor_response(reply)
+                st.session_state.messages.append(
+                    Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
+                )
+                st.session_state.awaiting_answer = True
+                st.session_state.question_type = question_type or "quiz"
+                save_persisted_state()
                 st.toast("Challenge armed! Answer the tough question for +10 bonus XP.", icon="⚡")
                 st.rerun()
 
@@ -906,19 +870,19 @@ def page_chat():
     
     quick_starts = {
         "Socratic": [
-            ("Causes of the French Revolution", "Guide me through why French citizens questioned the monarchy in 1789."),
-            ("Industrial Revolution impacts", "Help me reason through how the Industrial Revolution changed workers' lives."),
-            ("Civil Rights strategies", "Ask me guiding questions about tactics used during the Civil Rights Movement.")
+            ("Northern Route", "Guide me through the northern Silk Road route with questions."),
+            ("Trade Goods", "Help me reason through what goods were traded on the Silk Road."),
+            ("Cultural Exchange", "Ask me guiding questions about cultural exchange on the Silk Road.")
         ],
         "Narrative": [
-            ("Renaissance marketplace", "Put me in a Florentine marketplace in 1500 and narrate what I experience."),
-            ("Trenches of WWI", "Tell the story of a soldier in 1917 and ask how I would react."),
-            ("Harlem Renaissance club", "Let me experience a night in a Harlem jazz club and predict what happens next.")
+            ("Merchant's Journey", "Put me in a merchant's caravan traveling the Silk Road."),
+            ("Desert Oasis", "Tell the story of arriving at a Silk Road desert oasis."),
+            ("Cultural Meeting", "Let me experience a cultural exchange moment on the Silk Road.")
         ],
         "Direct": [
-            ("World War I causes", "Teach me the main causes of World War I step by step."),
-            ("Reconstruction summary", "Walk me through the key points of Reconstruction after the US Civil War."),
-            ("Cold War overview", "Give me a clear outline of the early Cold War and quiz me afterward.")
+            ("Silk Road Origins", "Teach me about the origins and expansion of the Silk Road."),
+            ("Route Comparison", "Walk me through the northern vs. southern Silk Road routes."),
+            ("Political Powers", "Give me a clear outline of empires controlling the Silk Road.")
         ]
     }
     
@@ -1005,7 +969,7 @@ def page_chat():
                     metadata["challenge_bonus"] = 10
                     st.session_state.challenge_active = False
                 if pending_type == "quiz":
-                    mark_concept_mastered(st.session_state.current_concept)
+                    mark_subtopic_mastered(st.session_state.current_subtopic)
                 st.session_state.messages[-1].metadata = metadata
                 save_persisted_state()
             else:
@@ -1144,13 +1108,13 @@ def apply_styles():
         .concept-tracker {
             display: flex;
             flex-direction: column;
-            gap: 0.4rem;
+            gap: 0.6rem;
             margin-bottom: 0.75rem;
         }
 
         .concept-chip {
             border-radius: 12px;
-            padding: 0.45rem 0.65rem;
+            padding: 0.5rem 0.7rem;
             font-weight: 600;
             border: 1px solid rgba(27, 38, 49, 0.08);
             background: rgba(255, 255, 255, 0.86);
@@ -1265,9 +1229,9 @@ def main():
         db.init_db()
     except Exception as e:
         st.error(f"Database initialization failed: {e}")
+    
     init_state()
     apply_styles()
-    sidebar_nav()
 
     # If user is not signed in, show login/register page
     if not st.session_state.get("user_id"):
@@ -1280,11 +1244,13 @@ def main():
             state = db.get_user_state(st.session_state["user_id"])
             if isinstance(state, dict):
                 for k, v in state.items():
-                    if k in ("xp", "level", "concept_progress", "current_concept", "current_topic", "messages", "personality", "challenge_active"):
+                    if k in ("xp", "level", "concept_progress", "subtopic_progress", "current_concept", "current_subtopic", "current_topic", "messages", "personality", "challenge_active"):
                         st.session_state[k] = v
                 st.session_state.db_state_loaded = True
         except Exception:
             pass
+
+    sidebar_nav()
 
     if st.session_state.page == "User Home":
         page_home()
