@@ -1128,7 +1128,7 @@ def show_login_page():
                     if k in ("xp", "level", "concept_progress", "current_concept", "current_topic", "messages", "personality", "challenge_active"):
                         st.session_state[k] = v
                 st.session_state.db_state_loaded = True
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.error("Invalid username or password.")
     if register and username and password:
@@ -1139,7 +1139,7 @@ def show_login_page():
             st.success("Account created and signed in.")
             # persist current app state into the newly created user
             save_persisted_state()
-            st.experimental_rerun()
+            st.rerun()
         else:
             st.error("Could not create account (username may already exist).")
 
@@ -1153,8 +1153,8 @@ def main():
     # ensure DB exists
     try:
         db.init_db()
-    except Exception:
-        pass
+    except Exception as e:
+        st.error(f"Database initialization failed: {e}")
     init_state()
     apply_styles()
     sidebar_nav()
