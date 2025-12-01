@@ -20,34 +20,51 @@ LEARNING_CONCEPTS = [
     {
         "key": "silk_road",
         "title": "Silk Road Trade Routes",
-        "description": "Compare northern vs. southern routes and the goods they carried.",
+        "description": "Explore the ancient trade networks connecting East and West.",
         "starter": "Guide me through the northern and southern Silk Road routes and what choices traders faced.",
         "subtopics": [
-            "Cultural exchange and belief systems",
-            "Goods and technologies on northern vs. southern routes",
-            "Political powers influencing safe passage",
-        ],
-    },
-    {
-        "key": "industrial_paths",
-        "title": "Industrial Revolution Paths",
-        "description": "Examine factory life, technology shifts, and worker responses.",
-        "starter": "Help me explore how different industrial cities changed during the Industrial Revolution.",
-        "subtopics": [
-            "Factory systems and mechanisation",
-            "Urban living conditions",
-            "Worker movements and reform efforts",
-        ],
-    },
-    {
-        "key": "civil_rights_routes",
-        "title": "Civil Rights Strategies",
-        "description": "Contrast direct action, legal challenges, and local organizing.",
-        "starter": "Walk me through the different strategies leaders used in the Civil Rights Movement.",
-        "subtopics": [
-            "Grassroots organising and voter drives",
-            "Courtroom battles and landmark cases",
-            "Nonviolent direct action tactics",
+            {
+                "key": "origins_expansion",
+                "title": "Origins & Expansion",
+                "description": "How the Silk Road began and grew",
+                "unlocked": True,
+                "mastered": False
+            },
+            {
+                "key": "northern_route",
+                "title": "Northern Route",
+                "description": "Through Central Asia and the steppes",
+                "unlocked": False,
+                "mastered": False
+            },
+            {
+                "key": "southern_route",
+                "title": "Southern Route",
+                "description": "Through the oases and deserts",
+                "unlocked": False,
+                "mastered": False
+            },
+            {
+                "key": "goods_trade",
+                "title": "Goods & Trade",
+                "description": "Silk, spices, jade, and more",
+                "unlocked": False,
+                "mastered": False
+            },
+            {
+                "key": "cultural_exchange",
+                "title": "Cultural Exchange",
+                "description": "Ideas, religions, and technologies",
+                "unlocked": False,
+                "mastered": False
+            },
+            {
+                "key": "political_powers",
+                "title": "Political Powers",
+                "description": "Empires controlling the routes",
+                "unlocked": False,
+                "mastered": False
+            },
         ],
     },
 ]
@@ -134,6 +151,14 @@ def init_state():
     persisted = load_persisted_state()
     persisted_xp = persisted.get("xp", 0)
     computed_level = 1 + persisted_xp // NEXT_LEVEL_XP
+    # Initialize subtopic progress for Silk Road
+    default_subtopic_progress = {}
+    for subtopic in LEARNING_CONCEPTS[0]["subtopics"]:
+        default_subtopic_progress[subtopic["key"]] = {
+            "unlocked": subtopic.get("unlocked", False),
+            "mastered": subtopic.get("mastered", False),
+        }
+
     default_concept_progress = {
         concept["key"]: {
             "unlocked": True if idx == 0 else False,
@@ -164,10 +189,13 @@ def init_state():
         "chat_session_pdf_id": None,
         "intro_sent": False,
         "current_concept": persisted.get("current_concept", LEARNING_CONCEPTS[0]["key"]),
+        "current_subtopic": persisted.get("current_subtopic", "origins_expansion"),
         "concept_progress": default_concept_progress,
+        "subtopic_progress": default_subtopic_progress,
         "community_pointer": 0,
         "challenge_active": persisted.get("challenge_active", False),
         "topic_refresh_counter": 0,
+        "editing_message_idx": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -257,6 +285,7 @@ Always:
 - Reference historical context to ground the discussion without delivering long lectures.
 - Reward reasoning supported by evidence with +10 XP and brief positive feedback.
 - After three to four guided questions, summarise what the student reasoned correctly and encourage reflection.
+- When challenge mode is activated, present a difficult [QUIZ] question that requires synthesis and deep understanding.
 
 If the learner says they do not know, offer a short explanation or hint, then follow up with a simpler question.
 
@@ -265,6 +294,7 @@ Tone: respectful, curious, mentor-like. Guide discovery step-by-step.
 Tagging rules:
 - Use [MINI-Q] before learning checkpoint questions worth 10 XP.
 - Use [QUIZ] before mastery questions that validate understanding (25 XP).
+- Challenge questions should always be [QUIZ] tagged.
 ''',
 
     "Narrative": '''You are a narrative-style history tutor who teaches through immersive storytelling and historical role-play.
@@ -532,31 +562,44 @@ def check_answer_quality(user_answer: str, question_type: str, personality: str)
 
 def render_concept_tracker():
     items_html = []
-    for concept in LEARNING_CONCEPTS:
-        key = concept["key"]
-        progress = st.session_state.concept_progress.get(key, {"unlocked": False, "mastered": False})
-        is_current = key == st.session_state.current_concept
-        if progress["mastered"]:
+    concept = LEARNING_CONCEPTS[0]  # Silk Road only
+    
+    st.markdown(f"**{concept['title']}**")
+    
+    for subtopic in concept["subtopics"]:
+        key = subtopic["key"]
+        # Check session state for this subtopic's progress
+        progress = st.session_state.get("subtopic_progress", {}).get(key, {
+            "unlocked": subtopic.get("unlocked", False),
+            "mastered": subtopic.get("mastered", False)
+        })
+        
+        is_current = key == st.session_state.get("current_subtopic")
+        
+        if progress.get("mastered"):
             state_class = "concept-chip mastered"
-            icon = "✅"
-        elif not progress["unlocked"]:
-            state_class = "concept-chip locked"
-            icon = "🔒"
+            icon = "🟢"
         elif is_current:
             state_class = "concept-chip active"
-            icon = "🟡"
+            icon = "�"
+        elif not progress.get("unlocked"):
+            state_class = "concept-chip locked"
+            icon = "⚫"
         else:
             state_class = "concept-chip available"
-            icon = "🔓"
-        label = f"{icon} {concept['title']}"
+            icon = "�"
+        
+        label = f"{icon} {subtopic['title']}"
         items_html.append(f"<div class='{state_class}'>{label}</div>")
+    
     tracker_html = "".join(items_html)
     st.markdown(f"<div class='concept-tracker'>{tracker_html}</div>", unsafe_allow_html=True)
 
 def sidebar_nav():
     with st.sidebar:
         st.markdown("## 🎓 TutorQuest")
-        st.caption("Gamified tutoring, powered by AI")
+        username = st.session_state.get("username", "Guest")
+        st.caption(f"Welcome, **{username}**!")
         
         page = st.radio(
             "Navigate",
@@ -602,17 +645,18 @@ def sidebar_nav():
         st.progress(level_progress(st.session_state.xp))
         st.markdown("### Concept progress")
         render_concept_tracker()
-        st.caption(f"🤝 {rotate_community_message()}")
-        st.markdown("### Route details")
-        for concept in LEARNING_CONCEPTS:
-            progress = st.session_state.concept_progress.get(concept["key"], {"unlocked": False, "mastered": False})
-            status = "Mastered" if progress.get("mastered") else ("Unlocked" if progress.get("unlocked") else "Locked")
-            st.markdown(f"**{concept['title']}** • {status}")
-            st.caption(concept["description"])
-            if concept.get("subtopics"):
-                bullet_lines = "\n".join([f"- {item}" for item in concept["subtopics"]])
-                st.markdown(bullet_lines)
-            st.divider()
+        st.divider()
+        
+        # User card at bottom
+        with st.container(border=True):
+            st.markdown("#### 👤 Profile")
+            username = st.session_state.get("username", "Guest")
+            st.markdown(f"**{username}**")
+            st.caption(f"Level {st.session_state.level} • {st.session_state.xp} XP")
+            if st.button("Sign Out", use_container_width=True, type="secondary"):
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                st.rerun()
 
 def page_home():
     st.title("Welcome back 👋")
@@ -801,10 +845,32 @@ def page_chat():
                 st.session_state.challenge_active = False
                 save_persisted_state()
         else:
-            if st.button("⚔️ Activate challenge", use_container_width=True):
+            if st.button("⚔️ Challenge Question", use_container_width=True, help="Navigate to tutor and receive a tough question for bonus XP"):
+                st.session_state.page = "Tutoring Chat"
                 st.session_state.challenge_active = True
-                st.toast("Challenge armed! Nail your next correct answer for +10 XP.", icon="⚡")
-                save_persisted_state()
+                # Prompt tutor for challenge question
+                model = get_gemini_model()
+                if model:
+                    challenge_prompt = (
+                        "Present a challenging [QUIZ] question that tests deep understanding of "
+                        f"{st.session_state.current_topic}. Make it thought-provoking and worthy of bonus XP. "
+                        "The student has activated challenge mode."
+                    )
+                    reply = chat_with_tutor(
+                        model,
+                        st.session_state.personality,
+                        challenge_prompt,
+                        st.session_state.pdf_file_ref
+                    )
+                    clean_reply, question_type = parse_tutor_response(reply)
+                    st.session_state.messages.append(
+                        Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
+                    )
+                    st.session_state.awaiting_answer = True
+                    st.session_state.question_type = question_type or "quiz"
+                    save_persisted_state()
+                st.toast("Challenge armed! Answer the tough question for +10 bonus XP.", icon="⚡")
+                st.rerun()
 
     st.markdown("##### Quick starts:")
     pp1, pp2, pp3, pp4 = st.columns([1.4, 1.6, 1.8, 2])
@@ -848,9 +914,32 @@ def page_chat():
     ensure_initial_tutor_message(model)
 
     with st.container(border=True):
-        for m in st.session_state.messages:
+        for idx, m in enumerate(st.session_state.messages):
             with st.chat_message(m.role):
-                st.markdown(m.content)
+                if m.role == "user":
+                    col1, col2 = st.columns([6, 1])
+                    with col1:
+                        if st.session_state.get("editing_message_idx") == idx:
+                            edited_text = st.text_area(
+                                "Edit message",
+                                value=m.content,
+                                key=f"edit_{idx}",
+                                label_visibility="collapsed"
+                            )
+                            if st.button("Save", key=f"save_{idx}"):
+                                st.session_state.messages[idx].content = edited_text
+                                st.session_state.editing_message_idx = None
+                                save_persisted_state()
+                                st.rerun()
+                        else:
+                            st.markdown(m.content)
+                    with col2:
+                        if st.session_state.get("editing_message_idx") != idx:
+                            if st.button("✏️", key=f"edit_btn_{idx}"):
+                                st.session_state.editing_message_idx = idx
+                                st.rerun()
+                else:
+                    st.markdown(m.content)
 
     user_input = st.chat_input("Ask a question or answer the tutor...")
     query = chip_query or user_input
@@ -1119,15 +1208,8 @@ def show_login_page():
         if user_id:
             st.session_state.user_id = user_id
             st.session_state.username = username.strip()
+            st.session_state.db_state_loaded = False  # Mark as needing to load
             st.success("Signed in successfully")
-            # load DB state if present
-            state = db.get_user_state(user_id)
-            if isinstance(state, dict):
-                # merge into session state keys we care about
-                for k, v in state.items():
-                    if k in ("xp", "level", "concept_progress", "current_concept", "current_topic", "messages", "personality", "challenge_active"):
-                        st.session_state[k] = v
-                st.session_state.db_state_loaded = True
             st.rerun()
         else:
             st.error("Invalid username or password.")
@@ -1136,9 +1218,8 @@ def show_login_page():
         if created:
             st.session_state.user_id = created
             st.session_state.username = username.strip()
+            st.session_state.db_state_loaded = False
             st.success("Account created and signed in.")
-            # persist current app state into the newly created user
-            save_persisted_state()
             st.rerun()
         else:
             st.error("Could not create account (username may already exist).")
