@@ -204,6 +204,9 @@ def init_state():
         "topic_refresh_counter": 0,
         "editing_message_idx": None,
         "db_state_loaded": False,
+        "quiz_score": 0,
+        "quiz_total": 0,
+        "quiz_mode": False,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -327,20 +330,32 @@ Tagging rules:
 
     "Direct": '''You are a direct, structured history tutor who delivers curriculum-aligned lessons clearly and efficiently.
 
-Always:
-- Start with an overview of the lesson objective.
-- Present concise factual content in short chunks.
-- After each chunk, ask a quick comprehension check tagged with [MINI-Q] and award +15 XP for correct answers.
-- Provide immediate, friendly feedback and short corrections, including optional hints.
-- End each topic with a three to five question [QUIZ] that reinforces key facts, award 25 XP for correct answers, and highlight module completion.
-- When challenge mode is activated, present a comprehensive [QUIZ] question that requires synthesis across multiple concepts.
+YOUR TEACHING FLOW:
+1. Present content in 2-3 concise teaching segments (3-4 sentences each)
+2. After each segment, ask "Ready to continue?" or "Any questions?" (user replies yes/no or asks questions)
+3. After 2-3 segments when you've covered the subtopic thoroughly, say "Let's test your understanding with a quiz" and present exactly 3 [QUIZ] questions
+4. User must get 3/3 correct to move on. If they miss any, re-teach that specific part they got wrong, then quiz again
+5. When user gets 3/3, congratulate them and ask what subtopic to explore next
+
+IMPORTANT RULES:
+- DO NOT use [MINI-Q] tags - you only teach, then quiz
+- DO NOT ask comprehension questions during teaching - save all assessment for the quiz
+- User should only reply yes/no/questions during teaching, then answer the 3 quiz questions
+- Each [QUIZ] question is worth 25 XP
+- Keep teaching segments short and clear
+- After 3/3 correct, the subtopic is mastered and sidebar updates
+
+QUIZ FORMAT:
+When ready to quiz, say "Let's test your understanding with a quiz on [subtopic]" then present:
+[QUIZ] Question 1: [question]
+Wait for answer, give feedback, then:
+[QUIZ] Question 2: [question]
+Wait for answer, give feedback, then:
+[QUIZ] Question 3: [question]
+
+If they get any wrong, note which concepts need review, re-teach those specific parts briefly, then quiz again on just those concepts.
 
 Tone: friendly, clear, supportive — like a teacher reviewing notes alongside the student.
-
-Tagging rules:
-- Use [MINI-Q] for comprehension checks worth 15 XP.
-- Use [QUIZ] for mastery assessments worth 25 XP.
-- Challenge questions should always be [QUIZ] tagged.
 '''
 }
 
@@ -356,9 +371,10 @@ INTRO_PROMPTS = {
         "experience or understand next. Avoid [MINI-Q] or [QUIZ] tags in this welcome."
     ),
     "Direct": (
-        "Welcome the learner, state today's objective in clear terms, outline the core points you will "
-        "cover, and ask which subtopic they want to tackle first. Hold off on [MINI-Q] and [QUIZ] tags "
-        "until after they reply."
+        "Welcome the learner warmly. Explain that you'll teach them about topics in clear segments, "
+        "they can ask questions or say 'continue' to proceed, and after covering a subtopic you'll give "
+        "them a 3-question quiz. Tell them which subtopic you'll start with and ask if they're ready to begin. "
+        "Do not start teaching yet - wait for their confirmation."
     ),
 }
 
@@ -426,7 +442,11 @@ def refresh_topic_periodically():
 
 def build_tutor_context(personality: str, pdf_ref=None) -> str:
     context = get_personality_prompt(personality)
-    context += "\n\nIMPORTANT: Use [MINI-Q] and [QUIZ] tags. Keep responses concise."
+    if personality == "Direct":
+        context += "\n\nIMPORTANT: Only use [QUIZ] tags for the 3-question quiz at the end. Do not use [MINI-Q] tags."
+    else:
+        context += "\n\nIMPORTANT: Use [MINI-Q] and [QUIZ] tags. Keep responses concise."
+    
     if personality == "Socratic":
         context += "\n- Award +10 XP when the student shows reasoning or cites evidence."
     elif personality == "Narrative":
@@ -434,7 +454,8 @@ def build_tutor_context(personality: str, pdf_ref=None) -> str:
             "\n- Award +10 XP for historically accurate or empathetic responses and +5 XP for creative engagement."
         )
     else:
-        context += "\n- Award +15 XP for correct recall on [MINI-Q] checks and 25 XP for [QUIZ] mastery."
+        context += "\n- Award 25 XP for each correct [QUIZ] answer. Students must get 3/3 to master the subtopic."
+    
     if pdf_ref:
         context += (
             "\n\nCURRICULUM INTEGRATION: Use the uploaded PDF only as background knowledge. Summarise or paraphrase ideas in fresh language so the learner gets a self-contained explanation. Never quote the PDF verbatim. When a fact originated from the PDF, mention the page unobtrusively in parentheses (e.g., '(p. 4)') after your own explanation. The learner should not need to open the PDF to follow along."
@@ -480,10 +501,10 @@ def parse_tutor_response(response: str):
     question_type = None
     if "[MINI-Q]" in response:
         question_type = "mini"
-        response = response.replace("[MINI-Q]", "🤔 **Mini-Question:**")
+        response = response.replace("[MINI-Q]", "**Mini-Question:**")
     elif "[QUIZ]" in response:
         question_type = "quiz"
-        response = response.replace("[QUIZ]", "📝 **Quiz:**")
+        response = response.replace("[QUIZ]", "**Quiz:**")
     return response, question_type
 
 
@@ -530,7 +551,21 @@ def check_answer_quality(user_answer: str, question_type: str, personality: str)
     if len(words) < 2:
         return False, 0, ""
 
-    # Standard quiz reward regardless of personality
+    # For Direct personality, all questions are quizzes worth 25 XP
+    if personality == "Direct" and question_type == "quiz":
+        # Track quiz progress
+        if not st.session_state.get("quiz_mode"):
+            st.session_state.quiz_mode = True
+            st.session_state.quiz_score = 0
+            st.session_state.quiz_total = 0
+        
+        # Simple validation - if answer is substantive, consider it valid
+        # The tutor AI will determine correctness
+        if len(words) >= 3:
+            return True, 25, "Quiz question"
+        return False, 0, ""
+    
+    # Standard quiz reward for other personalities
     if question_type == "quiz":
         return True, 25, "Quiz mastery"
 
@@ -575,9 +610,7 @@ def check_answer_quality(user_answer: str, question_type: str, personality: str)
             return True, 10, "Insightful historical perspective"
         return True, 5, "Creative engagement"
 
-    # Direct / default
-    if word_count >= 4:
-        return True, 15, "Accurate recall"
+    # Should not reach here for Direct personality
     return False, 0, ""
 
 def render_concept_tracker():
@@ -598,18 +631,22 @@ def render_concept_tracker():
         
         if progress.get("mastered"):
             state_class = "concept-chip mastered"
-            icon = "🟢"
+            icon = "●"
+            color = "green"
         elif is_current:
             state_class = "concept-chip active"
-            icon = "🟡"
+            icon = "●"
+            color = "yellow"
         elif not progress.get("unlocked"):
             state_class = "concept-chip locked"
-            icon = "⚫"
+            icon = "●"
+            color = "gray"
         else:
             state_class = "concept-chip available"
-            icon = "🔵"
+            icon = "●"
+            color = "blue"
         
-        label = f"{icon} {subtopic['title']}"
+        label = f"<span style='color: {color};'>{icon}</span> {subtopic['title']}"
         desc = f"<div style='font-size: 0.8em; color: #666; margin-left: 1.5em;'>{subtopic['description']}</div>"
         items_html.append(f"<div class='{state_class}'>{label}</div>{desc}")
     
@@ -618,7 +655,7 @@ def render_concept_tracker():
 
 def sidebar_nav():
     with st.sidebar:
-        st.markdown("## 🎓 TutorQuest")
+        st.markdown("## TutorQuest")
         username = st.session_state.get("username", "Guest")
         st.caption(f"Welcome, **{username}**!")
         
@@ -626,11 +663,11 @@ def sidebar_nav():
         st.markdown("### Navigate")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🏠 Home", use_container_width=True, type="primary" if st.session_state.page == "User Home" else "secondary"):
+            if st.button("Home", use_container_width=True, type="primary" if st.session_state.page == "User Home" else "secondary"):
                 st.session_state.page = "User Home"
                 st.rerun()
         with col2:
-            if st.button("💬 Chat", use_container_width=True, type="primary" if st.session_state.page == "Tutoring Chat" else "secondary"):
+            if st.button("Chat", use_container_width=True, type="primary" if st.session_state.page == "Tutoring Chat" else "secondary"):
                 st.session_state.page = "Tutoring Chat"
                 st.rerun()
         
@@ -643,9 +680,9 @@ def sidebar_nav():
                 st.session_state.personality = "Socratic"
             
             descriptions = {
-                "Socratic": "📚 Guides you with layered questions",
-                "Narrative": "📖 Immerses you in historical stories",
-                "Direct": "🎯 Delivers clear, structured lessons"
+                "Socratic": "Guides you with layered questions",
+                "Narrative": "Immerses you in historical stories",
+                "Direct": "Delivers clear, structured lessons"
             }
             
             # Use buttons instead of selectbox for personality
@@ -679,7 +716,7 @@ def sidebar_nav():
         
         # User card at bottom
         with st.container(border=True):
-            st.markdown("#### 👤 Profile")
+            st.markdown("#### Profile")
             username = st.session_state.get("username", "Guest")
             st.markdown(f"**{username}**")
             st.caption(f"Level {st.session_state.level} • {st.session_state.xp} XP")
@@ -689,7 +726,7 @@ def sidebar_nav():
                 st.rerun()
 
 def page_home():
-    st.title("Welcome back 👋")
+    st.title("Welcome back")
     st.caption("Track your learning streaks, XP, and level progress.")
 
     col_main, col_side = st.columns([2.6, 1.4])
@@ -724,11 +761,11 @@ def page_home():
     with col_side:
         with st.container(border=True):
             st.subheader("Badges")
-            badges = ["🏅 Starter"]
+            badges = ["Starter"]
             if st.session_state.level >= 2:
-                badges.append("🎯 Focused Learner")
+                badges.append("Focused Learner")
             if st.session_state.level >= 5:
-                badges.append("🔥 Knowledge Seeker")
+                badges.append("Knowledge Seeker")
             st.write("\n".join(badges))
         st.markdown("\n")
         with st.container(border=True):
@@ -740,35 +777,35 @@ def page_home():
     st.caption("Use these quick actions to keep your streak alive and unlock bonuses.")
     a1, a2, a3, a4 = st.columns(4)
     with a1:
-        if st.button("🧠 Practice +15 XP", use_container_width=True, type="primary"):
+        if st.button("Practice +15 XP", use_container_width=True, type="primary"):
             award_xp(15, "Practice completed")
     with a2:
-        if st.button("📘 Lesson +30 XP", use_container_width=True):
+        if st.button("Lesson +30 XP", use_container_width=True):
             award_xp(30, "Lesson completed")
     with a3:
-        if st.button("🔥 Streak +10 XP", use_container_width=True):
+        if st.button("Streak +10 XP", use_container_width=True):
             award_xp(10, "Streak maintained")
     with a4:
-        if st.button("⚔️ Challenge Question", use_container_width=True, help="Navigate to tutor and receive a tough question for bonus XP"):
+        if st.button("Challenge Question", use_container_width=True, help="Navigate to tutor and receive a tough question for bonus XP"):
             st.session_state.page = "Tutoring Chat"
             st.session_state.challenge_active = True
             st.toast("Challenge armed! Head to Tutoring Chat to get your tough question.", icon="⚡")
             save_persisted_state()
             st.rerun()
 
-    st.info("💡 **Tip:** Chat with your AI tutor and answer questions to earn XP!")
+    st.info("Tip: Chat with your AI tutor and answer questions to earn XP!")
 
 def page_chat():
-    st.title("Tutoring Chat 💬")
+    st.title("Tutoring Chat")
     st.caption(f"Learning with **{st.session_state.personality}** tutor • Answer questions to earn XP")
     st.markdown(f"**Current Topic:** {st.session_state.current_topic}")
 
     model = get_gemini_model()
     if model is None:
-        st.error("⚠️ Gemini API key not configured.")
+        st.error("Gemini API key not configured.")
         return
 
-    with st.expander("📄 Upload Curriculum (PDF)", expanded=not st.session_state.pdf_uploaded):
+    with st.expander("Upload Curriculum (PDF)", expanded=not st.session_state.pdf_uploaded):
         uploaded_file = st.file_uploader(
             "Upload a PDF for the tutor to reference",
             type=["pdf"],
@@ -795,12 +832,12 @@ def page_chat():
                     st.session_state.intro_sent = False
                     st.session_state.topic_refresh_counter = 0
                     save_persisted_state()
-                    st.success(f"✅ PDF uploaded: {uploaded_file.name}")
+                    st.success(f"PDF uploaded: {uploaded_file.name}")
                     st.rerun()
     
     local_pdf = Path("/Users/alishajain/Gamified_app/Unit 2_ 2.1-2.7.pdf")
     if local_pdf.exists() and not st.session_state.pdf_uploaded:
-        if st.button("📚 Load Unit 2 Curriculum (2.1-2.7)"):
+        if st.button("Load Unit 2 Curriculum (2.1-2.7)"):
             with st.spinner("Loading curriculum..."):
                 pdf_ref = upload_pdf_to_gemini(str(local_pdf))
                 if pdf_ref:
@@ -816,7 +853,7 @@ def page_chat():
                     st.session_state.intro_sent = False
                     st.session_state.topic_refresh_counter = 0
                     save_persisted_state()
-                    st.success("✅ Curriculum loaded!")
+                    st.success("Curriculum loaded!")
                     st.rerun()
 
     chip_query = None
@@ -827,11 +864,11 @@ def page_chat():
     active_concept = get_concept()
     if st.session_state.current_topic in ("General Tutoring", "", None):
         st.session_state.current_topic = active_concept["title"]
-    st.caption(f"🧭 {active_concept['description']}")
+    st.caption(f"{active_concept['description']}")
 
     primer_col, challenge_col = st.columns([1, 1])
     with primer_col:
-        if st.button("🎯 Route primer", use_container_width=True, help="Get an overview and learning roadmap for the Silk Road topic"):
+        if st.button("Route primer", use_container_width=True, help="Get an overview and learning roadmap for the Silk Road topic"):
             chip_query = active_concept["starter"]
             chip_topic = active_concept["title"]
     with challenge_col:
@@ -841,7 +878,7 @@ def page_chat():
                 st.session_state.challenge_active = False
                 save_persisted_state()
         else:
-            if st.button("⚔️ Challenge Question", use_container_width=True, help="Receive a tough question for bonus XP"):
+            if st.button("Challenge Question", use_container_width=True, help="Receive a tough question for bonus XP"):
                 st.session_state.challenge_active = True
                 # Prompt tutor for challenge question
                 challenge_prompt = (
@@ -900,7 +937,7 @@ def page_chat():
             chip_query = starts[2][1]
             chip_topic = starts[2][0]
     with pp4:
-        if st.button("✨ Surprise me", use_container_width=True):
+        if st.button("Surprise me", use_container_width=True):
             chip_query = f"Give me a fresh angle on {active_concept['title']} with a question to get started."
             chip_topic = active_concept["title"]
 
@@ -920,15 +957,39 @@ def page_chat():
                                 label_visibility="collapsed"
                             )
                             if st.button("Save", key=f"save_{idx}"):
+                                # Update the message
                                 st.session_state.messages[idx].content = edited_text
                                 st.session_state.editing_message_idx = None
+                                
+                                # Remove all messages after this one
+                                st.session_state.messages = st.session_state.messages[:idx+1]
+                                
+                                # Re-prompt the model with the edited message
+                                with st.spinner("Tutor is thinking..."):
+                                    reply = chat_with_tutor(
+                                        model,
+                                        st.session_state.personality,
+                                        edited_text,
+                                        st.session_state.pdf_file_ref
+                                    )
+                                
+                                clean_reply, question_type = parse_tutor_response(reply)
+                                
+                                st.session_state.messages.append(
+                                    Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
+                                )
+                                
+                                if question_type:
+                                    st.session_state.awaiting_answer = True
+                                    st.session_state.question_type = question_type
+                                
                                 save_persisted_state()
                                 st.rerun()
                         else:
                             st.markdown(m.content)
                     with col2:
                         if st.session_state.get("editing_message_idx") != idx:
-                            if st.button("✏️", key=f"edit_btn_{idx}"):
+                            if st.button("Edit", key=f"edit_btn_{idx}"):
                                 st.session_state.editing_message_idx = idx
                                 st.rerun()
                 else:
@@ -1010,7 +1071,7 @@ def page_chat():
 
     col_a, col_b = st.columns([1, 2])
     with col_a:
-        if st.button("🔄 Reset chat", use_container_width=True):
+        if st.button("Reset chat", use_container_width=True):
             st.session_state.messages = []
             st.session_state.awaiting_answer = False
             st.session_state.question_type = None
@@ -1032,16 +1093,14 @@ def page_chat():
                     xp_label = "10 XP for strong reasoning"
                 elif personality == "Narrative":
                     xp_label = "5-10 XP for story insight"
-                else:
-                    xp_label = "15 XP for correct recall"
             else:
-                xp_label = "25 XP for quiz mastery"
-            st.info(f"⏳ Awaiting answer • {xp_label}")
+                xp_label = "25 XP for quiz question"
+            st.info(f"Awaiting answer • {xp_label}")
         else:
             if st.session_state.challenge_active:
-                st.caption("⚔️ Challenge armed: next correct answer earns +10 bonus XP on top of regular rewards.")
+                st.caption("Challenge armed: next correct answer earns +10 bonus XP on top of regular rewards.")
             else:
-                st.caption("💡 Socratic Mini-Q: 10 XP • Narrative Mini-Q: 5-10 XP • Direct Mini-Q: 15 XP • Quiz: 25 XP")
+                st.caption("Socratic Mini-Q: 10 XP • Narrative Mini-Q: 5-10 XP • Direct Quiz: 25 XP per question")
 
 def apply_styles():
     st.markdown("""
