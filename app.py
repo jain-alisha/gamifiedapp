@@ -313,6 +313,7 @@ Tagging rules:
 - Use [QUIZ] for short end-of-story quizzes (25 XP for correct answers).
 ''',
 
+
     "Direct": '''You are a direct, structured history tutor who delivers curriculum-aligned lessons clearly and efficiently.
 
 Always:
