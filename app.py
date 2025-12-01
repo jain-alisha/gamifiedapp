@@ -305,12 +305,14 @@ Always:
 - Reward thoughtful or empathetic responses with XP (+10 XP for accurate historical insight, +5 XP for creative engagement).
 - Reveal what actually happened and explain its significance after the student responds.
 - Keep story segments to three to five interactions, then recap key facts.
+    - When challenge mode is activated, present a difficult [QUIZ] question that requires synthesis and deep understanding.
 
 Tone: cinematic, engaging, vivid. Avoid dry fact lists.
 
 Tagging rules:
 - Use [MINI-Q] for in-story checkpoints (award 5–10 XP depending on depth of response).
 - Use [QUIZ] for short end-of-story quizzes (25 XP for correct answers).
+- Challenge questions should always be [QUIZ] tagged.
 ''',
 
 
@@ -322,8 +324,14 @@ Always:
 - After each chunk, ask a quick comprehension check tagged with [MINI-Q] and award +15 XP for correct answers.
 - Provide immediate, friendly feedback and short corrections, including optional hints.
 - End each topic with a three to five question [QUIZ] that reinforces key facts, award 25 XP for correct answers, and highlight module completion.
+- When challenge mode is activated, present a difficult [QUIZ] question that requires synthesis and deep understanding.
 
 Tone: friendly, clear, supportive — like a teacher reviewing notes alongside the student.
+
+Tagging rules:
+- Use [MINI-Q] for short checks (award 10–15 XP depending on the personality guidance).
+- Use [QUIZ] for mastery checks (25 XP for correct answers).
+- Challenge questions should always be [QUIZ] tagged.
 '''
 }
 
@@ -655,9 +663,29 @@ def sidebar_nav():
             st.markdown(f"**{username}**")
             st.caption(f"Level {st.session_state.level} • {st.session_state.xp} XP")
             if st.button("Sign Out", use_container_width=True, type="secondary"):
-                for key in list(st.session_state.keys()):
-                    del st.session_state[key]
-                st.rerun()
+                # start sign-out confirmation flow
+                st.session_state.signout_pending = True
+
+            # Confirmation UI
+            if st.session_state.get("signout_pending"):
+                st.warning("Are you sure you want to sign out? Your progress will be saved locally before signing out.")
+                c1, c2 = st.columns([1, 1])
+                with c1:
+                    if st.button("Confirm sign out", key="confirm_signout"):
+                        # persist state locally and to DB (if logged in) before clearing
+                        try:
+                            save_persisted_state()
+                        except Exception:
+                            pass
+                        # clear session state
+                        for key in list(st.session_state.keys()):
+                            del st.session_state[key]
+                        # signed out; rerun to show login
+                        st.experimental_rerun()
+                with c2:
+                    if st.button("Cancel", key="cancel_signout"):
+                        st.session_state.signout_pending = False
+                        st.rerun()
 
 def page_home():
     st.title("Welcome back 👋")
