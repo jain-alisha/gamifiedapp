@@ -1264,8 +1264,6 @@ def page_chat():
             Message(role="user", content=query, metadata=None)
         )
         save_persisted_state()
-        with st.chat_message("user"):
-            st.markdown(query)
 
         pending_type = st.session_state.question_type
         if st.session_state.awaiting_answer and pending_type:
@@ -1308,9 +1306,6 @@ def page_chat():
             )
 
         clean_reply, question_type = parse_tutor_response(reply)
-        
-        with st.chat_message("assistant"):
-            st.markdown(clean_reply)
         
         st.session_state.messages.append(
             Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
