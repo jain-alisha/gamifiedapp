@@ -518,8 +518,8 @@ def update_learning_point_progress():
     # Get recent conversation text
     recent_messages = st.session_state.messages[-6:] if len(st.session_state.messages) >= 6 else st.session_state.messages
     conversation_text = " ".join([
-        (msg.content if isinstance(msg, Message) else msg.get("content", "")) if msg else ""
-        for msg in recent_messages
+        msg.content if isinstance(msg, Message) else (msg.get("content", "") if isinstance(msg, dict) else "")
+        for msg in recent_messages if msg
     ]).lower()
     
     # Check which learning points have been discussed
@@ -548,7 +548,11 @@ def update_learning_point_progress():
                 lp_progress[lp_key] = "active"
             elif current_status == "active":
                 # Mark as completed if discussed extensively
-                if matches >= 3 or "[MINI-Q]" in " ".join([str(m.content if isinstance(m, Message) else m.get("content", "")) for m in recent_messages]):
+                recent_text = " ".join([
+                    str(m.content) if isinstance(m, Message) else str(m.get("content", "")) if isinstance(m, dict) else ""
+                    for m in recent_messages if m
+                ])
+                if matches >= 3 or "[MINI-Q]" in recent_text:
                     lp_progress[lp_key] = "completed"
 
 
@@ -925,6 +929,34 @@ def sidebar_nav():
         
         st.divider()
         
+        # Export chat history
+        if len(st.session_state.messages) > 0:
+            chat_export = []
+            for msg in st.session_state.messages:
+                if isinstance(msg, Message):
+                    chat_export.append({
+                        "role": msg.role,
+                        "content": msg.content
+                    })
+                elif isinstance(msg, dict):
+                    chat_export.append({
+                        "role": msg.get("role", "unknown"),
+                        "content": msg.get("content", "")
+                    })
+            
+            import json
+            chat_json = json.dumps(chat_export, indent=2)
+            
+            st.download_button(
+                label="Download Chat History",
+                data=chat_json,
+                file_name=f"silk_road_chat_{st.session_state.current_subtopic}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+        
+        st.divider()
+        
         # User card at bottom
         with st.container(border=True):
             st.markdown("#### Profile")
@@ -1152,19 +1184,6 @@ def page_chat():
             chip_topic = active_concept["title"]
     
     ensure_initial_tutor_message(model)
-    
-    # Add Continue button for Direct personality (after messages exist)
-    if st.session_state.personality == "Direct" and len(st.session_state.messages) > 0:
-        st.markdown("---")
-        col_cont1, col_cont2, col_cont3 = st.columns([1, 1, 2])
-        with col_cont1:
-            if st.button("Continue", use_container_width=True, type="primary", key="continue_btn"):
-                chip_query = "continue"
-        with col_cont2:
-            if st.button("Ready for Quiz", use_container_width=True, key="quiz_btn"):
-                chip_query = "I'm ready for the quiz"
-        with col_cont3:
-            st.caption("Use 'Continue' to advance or type questions in the chat")
 
     with st.container(border=True):
         for idx, m in enumerate(st.session_state.messages):
@@ -1318,38 +1337,93 @@ def page_chat():
         
         st.rerun()
 
-    col_a, col_b = st.columns([1, 2])
-    with col_a:
-        if st.button("Reset chat", use_container_width=True):
-            st.session_state.messages = []
-            st.session_state.awaiting_answer = False
-            st.session_state.question_type = None
-            st.session_state.current_topic = get_concept()["title"]
-            st.session_state.chat_session = None
-            st.session_state.chat_session_personality = None
-            st.session_state.chat_session_pdf_id = None
-            st.session_state.intro_sent = False
-            st.session_state.challenge_active = False
-            st.session_state.topic_refresh_counter = 0
-            save_persisted_state()
-            st.rerun()
-    with col_b:
+    # Bottom section with Continue buttons for Direct, Reset, and status
+    if st.session_state.personality == "Direct" and len(st.session_state.messages) > 1:
+        # Show Continue/Quiz buttons for Direct personality
+        col_cont1, col_cont2, col_cont3 = st.columns([1, 1, 1])
+        with col_cont1:
+            if st.button("Continue", use_container_width=True, type="primary", key="continue_btn_bottom"):
+                query = "continue"
+                st.session_state.messages.append(Message(role="user", content=query, metadata=None))
+                save_persisted_state()
+                with st.spinner("Tutor is thinking..."):
+                    reply = chat_with_tutor(model, st.session_state.personality, query, st.session_state.pdf_file_ref)
+                clean_reply, question_type = parse_tutor_response(reply)
+                st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata={"question_type": question_type}))
+                if question_type:
+                    st.session_state.awaiting_answer = True
+                    st.session_state.question_type = question_type
+                save_persisted_state()
+                st.rerun()
+        with col_cont2:
+            if st.button("Ready for Quiz", use_container_width=True, key="quiz_btn_bottom"):
+                query = "I'm ready for the quiz"
+                st.session_state.messages.append(Message(role="user", content=query, metadata=None))
+                save_persisted_state()
+                with st.spinner("Preparing quiz..."):
+                    reply = chat_with_tutor(model, st.session_state.personality, query, st.session_state.pdf_file_ref)
+                clean_reply, question_type = parse_tutor_response(reply)
+                st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata={"question_type": question_type}))
+                if question_type:
+                    st.session_state.awaiting_answer = True
+                    st.session_state.question_type = question_type
+                save_persisted_state()
+                st.rerun()
+        with col_cont3:
+            if st.button("Reset chat", use_container_width=True, type="secondary"):
+                st.session_state.messages = []
+                st.session_state.awaiting_answer = False
+                st.session_state.question_type = None
+                st.session_state.current_topic = get_concept()["title"]
+                st.session_state.chat_session = None
+                st.session_state.chat_session_personality = None
+                st.session_state.chat_session_pdf_id = None
+                st.session_state.intro_sent = False
+                st.session_state.challenge_active = False
+                st.session_state.topic_refresh_counter = 0
+                save_persisted_state()
+                st.rerun()
+    else:
+        # Regular Reset button for non-Direct personalities
+        col_a, col_b = st.columns([1, 2])
+        with col_a:
+            if st.button("Reset chat", use_container_width=True):
+                st.session_state.messages = []
+                st.session_state.awaiting_answer = False
+                st.session_state.question_type = None
+                st.session_state.current_topic = get_concept()["title"]
+                st.session_state.chat_session = None
+                st.session_state.chat_session_personality = None
+                st.session_state.chat_session_pdf_id = None
+                st.session_state.intro_sent = False
+                st.session_state.challenge_active = False
+                st.session_state.topic_refresh_counter = 0
+                save_persisted_state()
+                st.rerun()
+        with col_b:
+            if st.session_state.awaiting_answer:
+                q_type = st.session_state.question_type
+                if q_type == "mini":
+                    personality = st.session_state.personality
+                    if personality == "Socratic":
+                        xp_label = "10 XP for strong reasoning"
+                    elif personality == "Narrative":
+                        xp_label = "5-10 XP for story insight"
+                else:
+                    xp_label = "25 XP for quiz question"
+                st.info(f"Awaiting answer • {xp_label}")
+            else:
+                if st.session_state.challenge_active:
+                    st.caption("Challenge armed: next correct answer earns +10 bonus XP on top of regular rewards.")
+                else:
+                    st.caption("Socratic Mini-Q: 10 XP • Narrative Mini-Q: 5-10 XP • Direct Quiz: 25 XP per question")
+    
+    # Status line for Direct
+    if st.session_state.personality == "Direct":
         if st.session_state.awaiting_answer:
-            q_type = st.session_state.question_type
-            if q_type == "mini":
-                personality = st.session_state.personality
-                if personality == "Socratic":
-                    xp_label = "10 XP for strong reasoning"
-                elif personality == "Narrative":
-                    xp_label = "5-10 XP for story insight"
-            else:
-                xp_label = "25 XP for quiz question"
-            st.info(f"Awaiting answer • {xp_label}")
+            st.info(f"Awaiting quiz answer • 25 XP per correct answer")
         else:
-            if st.session_state.challenge_active:
-                st.caption("Challenge armed: next correct answer earns +10 bonus XP on top of regular rewards.")
-            else:
-                st.caption("Socratic Mini-Q: 10 XP • Narrative Mini-Q: 5-10 XP • Direct Quiz: 25 XP per question")
+            st.caption("Use 'Continue' to advance through the lesson, or type questions anytime")
 
 def apply_styles():
     st.markdown("""
