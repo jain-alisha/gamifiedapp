@@ -364,26 +364,32 @@ CURRENT SUBTOPIC STRUCTURE:
 You must cover specific learning points for each subtopic. The current subtopic has 4 key learning points you need to address. Stay focused on these points and avoid tangents.
 
 YOUR TEACHING FLOW:
-1. Start with a brief context-setter (1-2 sentences) about the current learning point
-2. Ask ONE focused [MINI-Q] question that targets that specific learning point
-3. After student answers, give brief feedback and move to the next learning point
-4. After covering ALL 4 learning points, present a final synthesis [QUIZ] question
-5. When user gets quiz right, the subtopic is mastered
+1. For each learning point:
+   - First, provide 2-3 sentences of essential context/information about that learning point
+   - Then ask ONE [MINI-Q] question that helps them think deeper about what you just taught
+   - This is NOT a quiz - you're helping them explore and understand the concept
+   
+2. Build on their answers with follow-up context or gentle corrections
+3. After covering ALL 4 learning points this way, present a final synthesis [QUIZ] question
+4. When user gets quiz right, the subtopic is mastered
 
 CRITICAL RULES:
+- ALWAYS teach the core information first (2-3 sentences) before asking
+- Questions should help them think about implications, connections, or reasons - NOT test if they memorized
+- Example: "The Han Dynasty extended trade routes west. Why might controlling these routes have been strategically important for them?"
 - ONE question at a time, never multiple questions in one response
 - Stay laser-focused on the 4 learning points for the current subtopic
-- Do NOT explore random tangents or additional details beyond the learning points
-- Each [MINI-Q] should take 2-3 exchanges max before moving to next learning point
-- Use [MINI-Q] tag before every question (10 XP per correct answer)
+- Each learning point should take 2-3 exchanges: teach → ask → respond to answer
+- Use [MINI-Q] tag before every question (10 XP per thoughtful answer)
 - Use [QUIZ] tag for the final synthesis question (25 XP)
 - After [QUIZ] is answered correctly, ask which subtopic to explore next
 
 RESPONSE FORMAT:
-Brief context (1-2 sentences)
-[MINI-Q] One focused question about the current learning point
+[2-3 sentences teaching the learning point]
 
-Tone: respectful, curious, focused. Guide efficiently through the material.
+[MINI-Q] One thoughtful question about what you just taught
+
+Tone: patient, encouraging, guide-like. Teach first, then help them think deeper.
 ''',
 
     "Narrative": '''You are a narrative-style history tutor who teaches through immersive storytelling and historical role-play.
@@ -455,8 +461,8 @@ Tone: friendly, clear, efficient. Give substantial explanations before moving on
 INTRO_PROMPTS = {
     "Socratic": (
         "Welcome! I'll guide you through the Silk Road using the Socratic method. "
-        "For each subtopic, I have 4 specific learning points to cover with you through questions. "
-        "I'll ask focused questions to help you discover the answers. Let's start with the first subtopic: Origins & Expansion. "
+        "I'll teach you each concept first with clear information, then ask questions to help you think deeper about what we just learned. "
+        "For each subtopic, I have 4 specific learning points to cover. Let's start with Origins & Expansion. "
         "Ready to begin?"
     ),
     "Narrative": (
@@ -512,7 +518,7 @@ def update_learning_point_progress():
     # Get recent conversation text
     recent_messages = st.session_state.messages[-6:] if len(st.session_state.messages) >= 6 else st.session_state.messages
     conversation_text = " ".join([
-        msg.content if isinstance(msg, Message) else msg.get("content", "")
+        (msg.content if isinstance(msg, Message) else msg.get("content", "")) if msg else ""
         for msg in recent_messages
     ]).lower()
     
@@ -776,13 +782,10 @@ def check_answer_quality(user_answer: str, question_type: str, personality: str)
         return False, 0, ""
 
     if personality == "Socratic":
-        reasoning_keywords = {
-            "because", "since", "due", "therefore", "reason", "cause", "led", "result", "impact"
-        }
-        if word_count >= 8 and any(keyword in lower_answer for keyword in reasoning_keywords):
-            return True, 10, "Evidence-based reasoning"
-        if word_count >= 12:
-            return True, 10, "Thoughtful reflection"
+        # Socratic questions are about thinking, not memorization
+        # Any thoughtful response (6+ words) should be rewarded
+        if word_count >= 6:
+            return True, 10, "Thoughtful response"
         return False, 0, ""
 
     if personality == "Narrative":
@@ -1148,8 +1151,10 @@ def page_chat():
             chip_query = f"Give me a fresh angle on {active_concept['title']} with a question to get started."
             chip_topic = active_concept["title"]
     
-    # Add Continue button for Direct personality
-    if st.session_state.personality == "Direct" and st.session_state.messages:
+    ensure_initial_tutor_message(model)
+    
+    # Add Continue button for Direct personality (after messages exist)
+    if st.session_state.personality == "Direct" and len(st.session_state.messages) > 0:
         st.markdown("---")
         col_cont1, col_cont2, col_cont3 = st.columns([1, 1, 2])
         with col_cont1:
@@ -1160,8 +1165,6 @@ def page_chat():
                 chip_query = "I'm ready for the quiz"
         with col_cont3:
             st.caption("Use 'Continue' to advance or type questions in the chat")
-
-    ensure_initial_tutor_message(model)
 
     with st.container(border=True):
         for idx, m in enumerate(st.session_state.messages):
