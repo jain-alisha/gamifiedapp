@@ -151,12 +151,15 @@ def save_persisted_state():
         "level": st.session_state.get("level", 1),
         "concept_progress": st.session_state.get("concept_progress", {}),
         "subtopic_progress": st.session_state.get("subtopic_progress", {}),
+        "learning_point_progress": st.session_state.get("learning_point_progress", {}),
         "current_concept": st.session_state.get("current_concept"),
         "current_subtopic": st.session_state.get("current_subtopic"),
         "current_topic": st.session_state.get("current_topic"),
         "personality": st.session_state.get("personality"),
         "challenge_active": st.session_state.get("challenge_active", False),
         "messages": messages_payload,
+        "user_id": st.session_state.get("user_id"),  # Save login state
+        "username": st.session_state.get("username"),  # Save username
     }
     try:
         with STATE_FILE.open("w", encoding="utf-8") as f:
@@ -186,11 +189,23 @@ def init_state():
     
     # Initialize subtopic progress for Silk Road
     default_subtopic_progress = {}
+    default_learning_point_progress = {}
+    
     for subtopic in LEARNING_CONCEPTS[0]["subtopics"]:
         default_subtopic_progress[subtopic["key"]] = {
             "unlocked": subtopic.get("unlocked", False),
             "mastered": subtopic.get("mastered", False),
         }
+        # Initialize learning point tracking (4 points per subtopic)
+        default_learning_point_progress[subtopic["key"]] = {
+            "lp_0": "locked",
+            "lp_1": "locked",
+            "lp_2": "locked",
+            "lp_3": "locked",
+        }
+        # If it's the first subtopic (origins_expansion), unlock first learning point
+        if subtopic.get("unlocked"):
+            default_learning_point_progress[subtopic["key"]]["lp_0"] = "active"
     
     default_concept_progress = {
         concept["key"]: {
@@ -216,6 +231,16 @@ def init_state():
                 entry["unlocked"] = bool(stored.get("unlocked", entry["unlocked"]))
                 entry["mastered"] = bool(stored.get("mastered", entry["mastered"]))
     
+    # Load learning point progress
+    persisted_lp = persisted.get("learning_point_progress")
+    if isinstance(persisted_lp, dict):
+        for key, entry in default_learning_point_progress.items():
+            stored = persisted_lp.get(key)
+            if isinstance(stored, dict):
+                for lp_key in ["lp_0", "lp_1", "lp_2", "lp_3"]:
+                    if lp_key in stored:
+                        entry[lp_key] = stored[lp_key]
+    
     defaults = {
         "page": "User Home",
         "xp": persisted_xp,
@@ -235,6 +260,7 @@ def init_state():
         "current_subtopic": persisted.get("current_subtopic", "origins_expansion"),
         "concept_progress": default_concept_progress,
         "subtopic_progress": default_subtopic_progress,
+        "learning_point_progress": persisted.get("learning_point_progress", {}),
         "community_pointer": 0,
         "challenge_active": persisted.get("challenge_active", False),
         "topic_refresh_counter": 0,
@@ -243,10 +269,17 @@ def init_state():
         "quiz_score": 0,
         "quiz_total": 0,
         "quiz_mode": False,
+        "user_id": persisted.get("user_id"),  # Restore login state
+        "username": persisted.get("username"),  # Restore username
+        "message_count_for_lp_update": 0,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
+    
+    # If user_id was restored but db_state_loaded is False, trigger DB load
+    if st.session_state.get("user_id") and not st.session_state.get("db_state_loaded"):
+        st.session_state.db_state_loaded = False  # Ensure it loads on next render
     
     active_concept = get_concept()
     topic = st.session_state.get("current_topic")
@@ -388,31 +421,34 @@ CURRENT SUBTOPIC STRUCTURE:
 You must teach specific learning points for each subtopic. The current subtopic has 4 key learning points you need to cover.
 
 YOUR TEACHING FLOW:
-1. Teach learning point 1 in 2-3 clear sentences, ask "Ready for the next point?"
-2. Teach learning point 2 in 2-3 clear sentences, ask "Any questions before we continue?"
-3. Teach learning point 3 in 2-3 clear sentences, ask "Makes sense so far?"
-4. Teach learning point 4 in 2-3 clear sentences, say "Great! Let's test your understanding with a quiz."
-5. Present exactly 3 [QUIZ] questions covering all 4 learning points
+1. Present learning points 1-2 together in a substantial paragraph (5-7 sentences)
+2. End with: "Click 'Continue' when ready for the next section, or ask any questions in the chat."
+3. When user says continue/next, present learning points 3-4 together in another substantial paragraph (5-7 sentences)
+4. End with: "That covers the key concepts! Click 'Continue' to take the quiz, or ask questions if needed."
+5. When user says continue/next/quiz, present exactly 3 [QUIZ] questions one at a time
 6. User must get 3/3 correct to master the subtopic
-7. If they miss any, re-teach that specific point and quiz again
-8. When user gets 3/3, ask which subtopic to explore next
+7. If they miss any, re-teach that specific point briefly and quiz again
+8. When user gets 3/3, congratulate and ask which subtopic to explore next
 
 CRITICAL RULES:
-- Cover all 4 learning points in order
-- User only replies yes/no/questions during teaching (not assessed)
+- Teach in 2 substantial chunks (points 1-2, then points 3-4)
+- Each chunk should be 5-7 sentences with clear explanations and examples
+- DO NOT ask yes/no questions like "Ready?" or "Any questions?"
+- Instead say: "Click 'Continue' when ready" or similar
+- User advances by typing "continue", "next", or clicking a button
 - NO [MINI-Q] tags - only teach, then quiz at the end
 - Each [QUIZ] question is worth 25 XP
 - After 3/3 correct, the subtopic is mastered and sidebar updates
 
 QUIZ FORMAT:
 "Let's test your understanding with a quiz on [subtopic name]"
-[QUIZ] Question 1: [question]
-(wait for answer)
-[QUIZ] Question 2: [question]
-(wait for answer)
-[QUIZ] Question 3: [question]
+[QUIZ] Question 1: [question about points 1-2]
+(wait for answer and feedback)
+[QUIZ] Question 2: [question about points 3-4]
+(wait for answer and feedback)
+[QUIZ] Question 3: [synthesis question across all points]
 
-Tone: friendly, clear, efficient.
+Tone: friendly, clear, efficient. Give substantial explanations before moving on.
 '''
 }
 
@@ -431,7 +467,8 @@ INTRO_PROMPTS = {
     ),
     "Direct": (
         "Welcome! I'll teach you about the Silk Road in a clear, structured way. "
-        "For each subtopic, I'll cover 4 key learning points, then give you a 3-question quiz. "
+        "For each subtopic, I'll present the material in 2 sections, then give you a 3-question quiz. "
+        "You'll click 'Continue' between sections and can ask questions anytime. "
         "You need 3/3 correct to master each subtopic. Let's start with Origins & Expansion. "
         "Ready to begin?"
     ),
@@ -449,11 +486,64 @@ def get_concept(key: Optional[str] = None):
     return LEARNING_CONCEPTS[0]
 
 
-def unlock_subtopic(key: str):
-    progress = st.session_state.subtopic_progress.setdefault(key, {"unlocked": False, "mastered": False})
-    if not progress["unlocked"]:
-        progress["unlocked"] = True
-        save_persisted_state()
+def update_learning_point_progress():
+    """Update learning point progress based on recent conversation."""
+    current_subtopic = st.session_state.get("current_subtopic")
+    if not current_subtopic:
+        return
+    
+    # Get the learning points for current subtopic
+    learning_points = []
+    for concept in LEARNING_CONCEPTS:
+        for subtopic in concept.get("subtopics", []):
+            if subtopic["key"] == current_subtopic:
+                learning_points = subtopic.get("learning_points", [])
+                break
+    
+    if not learning_points:
+        return
+    
+    # Initialize if doesn't exist
+    if "learning_point_progress" not in st.session_state:
+        st.session_state.learning_point_progress = {}
+    if current_subtopic not in st.session_state.learning_point_progress:
+        st.session_state.learning_point_progress[current_subtopic] = {}
+    
+    # Get recent conversation text
+    recent_messages = st.session_state.messages[-6:] if len(st.session_state.messages) >= 6 else st.session_state.messages
+    conversation_text = " ".join([
+        msg.content if isinstance(msg, Message) else msg.get("content", "")
+        for msg in recent_messages
+    ]).lower()
+    
+    # Check which learning points have been discussed
+    lp_progress = st.session_state.learning_point_progress[current_subtopic]
+    
+    for idx, point in enumerate(learning_points):
+        lp_key = f"lp_{idx}"
+        current_status = lp_progress.get(lp_key, "locked")
+        
+        # Extract key terms from learning point
+        point_lower = point.lower()
+        key_terms = []
+        
+        # Get distinctive words (longer than 4 chars, not common words)
+        words = point_lower.split()
+        for word in words:
+            clean_word = word.strip('.,()[]{}":;!?')
+            if len(clean_word) > 4 and clean_word not in ['about', 'their', 'which', 'where', 'these', 'those', 'through', 'between']:
+                key_terms.append(clean_word)
+        
+        # Check if this learning point has been discussed
+        matches = sum(1 for term in key_terms if term in conversation_text)
+        
+        if matches >= 2 and current_status != "completed":  # At least 2 key terms mentioned
+            if current_status == "locked":
+                lp_progress[lp_key] = "active"
+            elif current_status == "active":
+                # Mark as completed if discussed extensively
+                if matches >= 3 or "[MINI-Q]" in " ".join([str(m.content if isinstance(m, Message) else m.get("content", "")) for m in recent_messages]):
+                    lp_progress[lp_key] = "completed"
 
 
 def mark_subtopic_mastered(key: str):
@@ -462,6 +552,12 @@ def mark_subtopic_mastered(key: str):
         return
     if not progress["mastered"]:
         progress["mastered"] = True
+        
+        # Mark all learning points as completed
+        if key in st.session_state.learning_point_progress:
+            for lp_key in st.session_state.learning_point_progress[key]:
+                st.session_state.learning_point_progress[key][lp_key] = "completed"
+        
         # Unlock next subtopic
         subtopics = LEARNING_CONCEPTS[0]["subtopics"]
         index = next((idx for idx, s in enumerate(subtopics) if s["key"] == key), None)
@@ -469,6 +565,13 @@ def mark_subtopic_mastered(key: str):
             next_key = subtopics[index + 1]["key"]
             unlock_subtopic(next_key)
             st.toast("New subtopic unlocked!", icon="🚀")
+        save_persisted_state()
+
+
+def unlock_subtopic(key: str):
+    progress = st.session_state.subtopic_progress.setdefault(key, {"unlocked": False, "mastered": False})
+    if not progress["unlocked"]:
+        progress["unlocked"] = True
         save_persisted_state()
 
 
@@ -694,7 +797,6 @@ def check_answer_quality(user_answer: str, question_type: str, personality: str)
     return False, 0, ""
 
 def render_concept_tracker():
-    items_html = []
     concept = LEARNING_CONCEPTS[0]  # Silk Road only
     
     st.markdown(f"**{concept['title']}**")
@@ -709,6 +811,7 @@ def render_concept_tracker():
         
         is_current = key == st.session_state.get("current_subtopic")
         
+        # Determine subtopic-level status
         if progress.get("mastered"):
             state_class = "concept-chip mastered"
             icon = "●"
@@ -726,12 +829,37 @@ def render_concept_tracker():
             icon = "●"
             color = "blue"
         
-        label = f"<span style='color: {color};'>{icon}</span> {subtopic['title']}"
-        desc = f"<div style='font-size: 0.8em; color: #666; margin-left: 1.5em;'>{subtopic['description']}</div>"
-        items_html.append(f"<div class='{state_class}'>{label}</div>{desc}")
-    
-    tracker_html = "".join(items_html)
-    st.markdown(f"<div class='concept-tracker'>{tracker_html}</div>", unsafe_allow_html=True)
+        # Subtopic title
+        label = f"<span style='color: {color};'>{icon}</span> <strong>{subtopic['title']}</strong>"
+        st.markdown(f"<div class='{state_class}'>{label}</div>", unsafe_allow_html=True)
+        
+        # Show learning points if unlocked or current
+        if progress.get("unlocked") or is_current:
+            learning_points = subtopic.get("learning_points", [])
+            if learning_points:
+                # Get individual learning point progress from session state
+                lp_progress = st.session_state.get("learning_point_progress", {}).get(key, {})
+                
+                for idx, point in enumerate(learning_points):
+                    lp_key = f"lp_{idx}"
+                    lp_status = lp_progress.get(lp_key, "locked")  # locked, active, completed
+                    
+                    if lp_status == "completed":
+                        lp_icon = "●"
+                        lp_color = "green"
+                    elif lp_status == "active":
+                        lp_icon = "●"
+                        lp_color = "yellow"
+                    else:
+                        lp_icon = "●"
+                        lp_color = "lightgray"
+                    
+                    # Truncate long learning points for display
+                    display_point = point if len(point) <= 50 else point[:47] + "..."
+                    lp_html = f"<div style='margin-left: 1.5em; font-size: 0.85em; color: #555; margin-top: 0.3em;'><span style='color: {lp_color};'>{lp_icon}</span> {display_point}</div>"
+                    st.markdown(lp_html, unsafe_allow_html=True)
+        
+        st.markdown("<div style='margin-bottom: 0.8em;'></div>", unsafe_allow_html=True)
 
 def sidebar_nav():
     with st.sidebar:
@@ -1019,6 +1147,19 @@ def page_chat():
         if st.button("Surprise me", use_container_width=True):
             chip_query = f"Give me a fresh angle on {active_concept['title']} with a question to get started."
             chip_topic = active_concept["title"]
+    
+    # Add Continue button for Direct personality
+    if st.session_state.personality == "Direct" and st.session_state.messages:
+        st.markdown("---")
+        col_cont1, col_cont2, col_cont3 = st.columns([1, 1, 2])
+        with col_cont1:
+            if st.button("Continue", use_container_width=True, type="primary", key="continue_btn"):
+                chip_query = "continue"
+        with col_cont2:
+            if st.button("Ready for Quiz", use_container_width=True, key="quiz_btn"):
+                chip_query = "I'm ready for the quiz"
+        with col_cont3:
+            st.caption("Use 'Continue' to advance or type questions in the chat")
 
     ensure_initial_tutor_message(model)
 
@@ -1153,6 +1294,19 @@ def page_chat():
             Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
         )
         refresh_topic_periodically()
+        
+        # Update learning point progress
+        st.session_state.message_count_for_lp_update += 1
+        personality = st.session_state.personality
+        
+        # For Direct, update after quiz completion
+        if personality == "Direct" and question_type == "quiz":
+            update_learning_point_progress()
+        # For Socratic/Narrative, update every 3 messages
+        elif personality in ["Socratic", "Narrative"] and st.session_state.message_count_for_lp_update >= 3:
+            update_learning_point_progress()
+            st.session_state.message_count_for_lp_update = 0
+        
         save_persisted_state()
         
         if question_type:
@@ -1354,6 +1508,7 @@ def show_login_page():
             st.session_state.user_id = user_id
             st.session_state.username = username.strip()
             st.session_state.db_state_loaded = False  # Mark as needing to load
+            save_persisted_state()  # Save login state immediately
             st.success("Signed in successfully")
             st.rerun()
         else:
@@ -1365,6 +1520,7 @@ def show_login_page():
             st.session_state.user_id = created
             st.session_state.username = username.strip()
             st.session_state.db_state_loaded = False
+            save_persisted_state()  # Save login state immediately
             st.success("Account created and signed in.")
             st.rerun()
         else:
@@ -1420,7 +1576,7 @@ def main():
                 for k, v in state.items():
                     if k == "messages":
                         continue  # Already handled above
-                    if k in ("xp", "level", "concept_progress", "subtopic_progress", "current_concept", "current_subtopic", "current_topic", "personality", "challenge_active"):
+                    if k in ("xp", "level", "concept_progress", "subtopic_progress", "learning_point_progress", "current_concept", "current_subtopic", "current_topic", "personality", "challenge_active"):
                         st.session_state[k] = v
                 
                 st.session_state.db_state_loaded = True
