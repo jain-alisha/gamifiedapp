@@ -158,8 +158,12 @@ def save_persisted_state():
         "personality": st.session_state.get("personality"),
         "challenge_active": st.session_state.get("challenge_active", False),
         "messages": messages_payload,
-        "user_id": st.session_state.get("user_id"),  # Save login state
-        "username": st.session_state.get("username"),  # Save username
+        "user_id": st.session_state.get("user_id"),
+        "username": st.session_state.get("username"),
+        "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
+        "question_depth": st.session_state.get("question_depth", "DEEP_PROBE"),
+        "quiz_difficulty": st.session_state.get("quiz_difficulty", "MEDIUM"),
+        "bandit_stats": st.session_state.get("bandit_stats", {}),
     }
     try:
         with STATE_FILE.open("w", encoding="utf-8") as f:
@@ -269,9 +273,21 @@ def init_state():
         "quiz_score": 0,
         "quiz_total": 0,
         "quiz_mode": False,
-        "user_id": persisted.get("user_id"),  # Restore login state
-        "username": persisted.get("username"),  # Restore username
+        "user_id": persisted.get("user_id"),
+        "username": persisted.get("username"),
         "message_count_for_lp_update": 0,
+        # Contextual bandit state
+        "hint_policy": persisted.get("hint_policy", "LIGHT_HINTS"),  # NO_AUTOMATIC_HINTS, LIGHT_HINTS, FULL_HINTS
+        "question_depth": persisted.get("question_depth", "DEEP_PROBE"),  # SHALLOW_CHECK, DEEP_PROBE
+        "quiz_difficulty": persisted.get("quiz_difficulty", "MEDIUM"),  # EASY, MEDIUM, HARD
+        "last_question_time": None,
+        "question_attempts": 0,
+        "bandit_stats": persisted.get("bandit_stats", {
+            "hint_policy_rewards": {"NO_AUTOMATIC_HINTS": [], "LIGHT_HINTS": [], "FULL_HINTS": []},
+            "depth_rewards": {"SHALLOW_CHECK": [], "DEEP_PROBE": []},
+            "difficulty_rewards": {"EASY": [], "MEDIUM": [], "HARD": []},
+        }),
+        "turns_since_lp_check": 0,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -363,6 +379,11 @@ PERSONALITY_PROMPTS = {
 CURRENT SUBTOPIC STRUCTURE:
 You must cover specific learning points for each subtopic. The current subtopic has 4 key learning points you need to address. Stay focused on these points and avoid tangents.
 
+ADAPTIVE TEACHING STYLE (INJECTED DYNAMICALLY):
+{question_depth_instruction}
+{hint_policy_instruction}
+{quiz_difficulty_instruction}
+
 YOUR TEACHING FLOW:
 1. For each learning point:
    - First, provide 2-3 sentences of essential context/information about that learning point
@@ -397,28 +418,37 @@ Tone: patient, encouraging, guide-like. Teach first, then help them think deeper
 CURRENT SUBTOPIC STRUCTURE:
 You must cover specific learning points for each subtopic. The current subtopic has 4 key learning points you need to address through storytelling.
 
+ADAPTIVE TEACHING STYLE (INJECTED DYNAMICALLY):
+{quiz_difficulty_instruction}
+
 YOUR TEACHING FLOW:
 1. Frame each learning point as a short immersive scene (3-4 sentences)
 2. Ask ONE [MINI-Q] question that connects the scene to the learning point
 3. After student responds, reveal what happened and explain significance
 4. Move to next learning point with a new scene
-5. After covering ALL 4 learning points, present a final scenario-based [QUIZ] question
-6. When user gets quiz right, the subtopic is mastered
+5. After covering ALL 4 learning points, PAUSE THE NARRATIVE and present a straightforward [QUIZ]
+6. Quiz should test factual understanding of the 4 concepts covered
+7. When user gets quiz right, the subtopic is mastered
 
 CRITICAL RULES:
 - Cover all 4 learning points in order, one scene per point
 - Keep scenes concise (3-4 sentences max)
 - ONE question per response, never multiple
 - Stay focused on the learning points, no tangents
+- After 4th learning point, STOP story and give quiz
 - Use [MINI-Q] tag before every question (5-10 XP depending on depth)
-- Use [QUIZ] tag for final synthesis question (25 XP)
+- Use [QUIZ] tag for factual assessment question (difficulty: {quiz_difficulty}, 25 XP)
 - After [QUIZ] is answered correctly, ask which subtopic to explore next
 
-RESPONSE FORMAT:
+RESPONSE FORMAT FOR SCENES:
 [Immersive scene describing the learning point]
 [MINI-Q] One question about what the student sees/feels/predicts
 
-Tone: cinematic, engaging, focused. Tell stories that illuminate the learning points.
+RESPONSE FORMAT FOR QUIZ:
+"We've experienced the story of [topic]. Let's test your understanding."
+[QUIZ] [Straightforward factual question about covered concepts]
+
+Tone: cinematic, engaging, focused for stories. Clear and direct for quizzes.
 ''',
 
     "Direct": '''You are a direct, structured history tutor who delivers curriculum-aligned lessons clearly and efficiently.
@@ -426,15 +456,19 @@ Tone: cinematic, engaging, focused. Tell stories that illuminate the learning po
 CURRENT SUBTOPIC STRUCTURE:
 You must teach specific learning points for each subtopic. The current subtopic has 4 key learning points you need to cover.
 
+ADAPTIVE TEACHING STYLE (INJECTED DYNAMICALLY):
+{quiz_difficulty_instruction}
+
 YOUR TEACHING FLOW:
 1. Present learning points 1-2 together in a substantial paragraph (5-7 sentences)
 2. End with: "Click 'Continue' when ready for the next section, or ask any questions in the chat."
 3. When user says continue/next, present learning points 3-4 together in another substantial paragraph (5-7 sentences)
 4. End with: "That covers the key concepts! Click 'Continue' to take the quiz, or ask questions if needed."
 5. When user says continue/next/quiz, present exactly 3 [QUIZ] questions one at a time
-6. User must get 3/3 correct to master the subtopic
-7. If they miss any, re-teach that specific point briefly and quiz again
-8. When user gets 3/3, congratulate and ask which subtopic to explore next
+6. Quiz difficulty should match: {quiz_difficulty}
+7. User must get 3/3 correct to master the subtopic
+8. If they miss any, re-teach that specific point briefly and quiz again
+9. When user gets 3/3, congratulate and ask which subtopic to explore next
 
 CRITICAL RULES:
 - Teach in 2 substantial chunks (points 1-2, then points 3-4)
@@ -448,11 +482,11 @@ CRITICAL RULES:
 
 QUIZ FORMAT:
 "Let's test your understanding with a quiz on [subtopic name]"
-[QUIZ] Question 1: [question about points 1-2]
+[QUIZ] Question 1: [question about points 1-2 at {quiz_difficulty} difficulty]
 (wait for answer and feedback)
-[QUIZ] Question 2: [question about points 3-4]
+[QUIZ] Question 2: [question about points 3-4 at {quiz_difficulty} difficulty]
 (wait for answer and feedback)
-[QUIZ] Question 3: [synthesis question across all points]
+[QUIZ] Question 3: [synthesis question across all points at {quiz_difficulty} difficulty]
 
 Tone: friendly, clear, efficient. Give substantial explanations before moving on.
 '''
@@ -574,8 +608,161 @@ def mark_subtopic_mastered(key: str):
         if index is not None and index + 1 < len(subtopics):
             next_key = subtopics[index + 1]["key"]
             unlock_subtopic(next_key)
+            # Auto-switch to next subtopic
+            st.session_state.current_subtopic = next_key
             st.toast("New subtopic unlocked!", icon="🚀")
         save_persisted_state()
+
+
+def get_current_subtopic_status():
+    """Check if current subtopic is mastered to avoid redundant teaching."""
+    current_subtopic = st.session_state.get("current_subtopic")
+    if not current_subtopic:
+        return "not_started"
+    
+    progress = st.session_state.subtopic_progress.get(current_subtopic, {})
+    if progress.get("mastered"):
+        return "mastered"
+    
+    lp_progress = st.session_state.learning_point_progress.get(current_subtopic, {})
+    completed_count = sum(1 for status in lp_progress.values() if status == "completed")
+    
+    if completed_count >= 3:  # 3 out of 4 learning points completed
+        return "nearly_complete"
+    elif completed_count >= 1:
+        return "in_progress"
+    else:
+        return "not_started"
+
+
+def select_bandit_action(action_type: str, context: Dict) -> str:
+    """
+    Epsilon-greedy contextual bandit selection.
+    
+    action_type: "hint_policy", "question_depth", or "quiz_difficulty"
+    context: relevant state (user_level, subtopic_progress, time_of_day, etc.)
+    """
+    import random
+    
+    epsilon = 0.2  # 20% exploration, 80% exploitation
+    
+    bandit_stats = st.session_state.get("bandit_stats", {})
+    
+    if action_type == "hint_policy":
+        actions = ["NO_AUTOMATIC_HINTS", "LIGHT_HINTS", "FULL_HINTS"]
+        rewards_key = "hint_policy_rewards"
+    elif action_type == "question_depth":
+        actions = ["SHALLOW_CHECK", "DEEP_PROBE"]
+        rewards_key = "depth_rewards"
+    elif action_type == "quiz_difficulty":
+        actions = ["EASY", "MEDIUM", "HARD"]
+        rewards_key = "difficulty_rewards"
+    else:
+        return st.session_state.get(action_type, actions[0])
+    
+    # Epsilon-greedy: explore with probability epsilon
+    if random.random() < epsilon:
+        # Exploration: random action
+        selected = random.choice(actions)
+    else:
+        # Exploitation: choose best action based on average reward
+        avg_rewards = {}
+        for action in actions:
+            rewards = bandit_stats.get(rewards_key, {}).get(action, [])
+            avg_rewards[action] = sum(rewards) / len(rewards) if rewards else 0.5  # Default to neutral
+        
+        # Select action with highest average reward
+        selected = max(avg_rewards, key=avg_rewards.get)
+    
+    return selected
+
+
+def record_bandit_reward(action_type: str, action: str, reward: float):
+    """
+    Record reward for a bandit action.
+    
+    reward: 0.0 to 1.0 (0 = worst, 1 = best)
+    """
+    bandit_stats = st.session_state.get("bandit_stats", {
+        "hint_policy_rewards": {"NO_AUTOMATIC_HINTS": [], "LIGHT_HINTS": [], "FULL_HINTS": []},
+        "depth_rewards": {"SHALLOW_CHECK": [], "DEEP_PROBE": []},
+        "difficulty_rewards": {"EASY": [], "MEDIUM": [], "HARD": []},
+    })
+    
+    if action_type == "hint_policy":
+        rewards_key = "hint_policy_rewards"
+    elif action_type == "question_depth":
+        rewards_key = "depth_rewards"
+    elif action_type == "quiz_difficulty":
+        rewards_key = "difficulty_rewards"
+    else:
+        return
+    
+    if rewards_key not in bandit_stats:
+        bandit_stats[rewards_key] = {}
+    if action not in bandit_stats[rewards_key]:
+        bandit_stats[rewards_key][action] = []
+    
+    bandit_stats[rewards_key][action].append(reward)
+    
+    # Keep only last 20 rewards to adapt to changing user behavior
+    if len(bandit_stats[rewards_key][action]) > 20:
+        bandit_stats[rewards_key][action] = bandit_stats[rewards_key][action][-20:]
+    
+    st.session_state.bandit_stats = bandit_stats
+    save_persisted_state()
+
+
+def check_learning_point_understanding():
+    """
+    Every ~3 turns for Socratic/Narrative, check if learner has understood current learning point.
+    Updates visualization accordingly.
+    """
+    current_subtopic = st.session_state.get("current_subtopic")
+    if not current_subtopic:
+        return False
+    
+    # Get recent conversation
+    recent_messages = st.session_state.messages[-6:] if len(st.session_state.messages) >= 6 else st.session_state.messages
+    if len(recent_messages) < 4:  # Need at least 2 exchanges
+        return False
+    
+    # Find which learning point we're currently on
+    lp_progress = st.session_state.learning_point_progress.get(current_subtopic, {})
+    current_lp_idx = None
+    for idx in range(4):
+        lp_key = f"lp_{idx}"
+        status = lp_progress.get(lp_key, "locked")
+        if status == "active":
+            current_lp_idx = idx
+            break
+    
+    if current_lp_idx is None:
+        return False
+    
+    # Simple heuristic: if user has given 2+ substantive answers (6+ words each) since LP became active
+    substantive_answers = 0
+    for msg in recent_messages[-4:]:
+        if isinstance(msg, Message) and msg.role == "user":
+            if len(msg.content.split()) >= 6:
+                substantive_answers += 1
+    
+    if substantive_answers >= 2:
+        # Mark as completed
+        lp_key = f"lp_{current_lp_idx}"
+        lp_progress[lp_key] = "completed"
+        
+        # Activate next learning point if available
+        if current_lp_idx + 1 < 4:
+            next_lp_key = f"lp_{current_lp_idx + 1}"
+            if lp_progress.get(next_lp_key, "locked") == "locked":
+                lp_progress[next_lp_key] = "active"
+        
+        st.session_state.learning_point_progress[current_subtopic] = lp_progress
+        save_persisted_state()
+        return True
+    
+    return False
 
 
 def unlock_subtopic(key: str):
@@ -613,7 +800,46 @@ def refresh_topic_periodically():
         st.session_state.topic_refresh_counter = 0
 
 def build_tutor_context(personality: str, pdf_ref=None) -> str:
-    context = get_personality_prompt(personality)
+    # Get base personality prompt
+    base_prompt = get_personality_prompt(personality)
+    
+    # Build adaptive instructions based on bandit selections
+    quiz_difficulty = st.session_state.get("quiz_difficulty", "MEDIUM")
+    
+    if quiz_difficulty == "EASY":
+        quiz_diff_instruction = "QUIZ DIFFICULTY: EASY - Ask straightforward recall questions with obvious answers. Example: 'What dynasty sent Zhang Qian to Central Asia?'"
+    elif quiz_difficulty == "HARD":
+        quiz_diff_instruction = "QUIZ DIFFICULTY: HARD - Ask synthesis questions requiring deep analysis and connections. Example: 'How did the geographic challenges of the Silk Road influence the types of goods that became most valuable?'"
+    else:  # MEDIUM
+        quiz_diff_instruction = "QUIZ DIFFICULTY: MEDIUM - Ask questions requiring understanding and application. Example: 'Why was controlling the Silk Road routes strategically important for the Han Dynasty?'"
+    
+    # For Socratic only: question depth and hint policy
+    if personality == "Socratic":
+        question_depth = st.session_state.get("question_depth", "DEEP_PROBE")
+        hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
+        
+        if question_depth == "DEEP_PROBE":
+            depth_instruction = "QUESTION DEPTH: DEEP - Ask at least 2 follow-up why/how questions about the same concept before moving to the next learning point. Probe deeper into reasoning."
+        else:  # SHALLOW_CHECK
+            depth_instruction = "QUESTION DEPTH: SHALLOW - Ask one quick understanding check per learning point, then advance if correct. Keep it efficient."
+        
+        if hint_policy == "NO_AUTOMATIC_HINTS":
+            hint_instruction = "HINT POLICY: Only provide hints if student explicitly asks 'can I get a hint?' or similar."
+        elif hint_policy == "FULL_HINTS":
+            hint_instruction = "HINT POLICY: After one wrong or weak answer, provide a detailed scaffolded hint pointing toward the answer."
+        else:  # LIGHT_HINTS
+            hint_instruction = "HINT POLICY: After one wrong answer, give a small nudge ('Think about...') without giving away the answer."
+        
+        # Inject into template
+        context = base_prompt.format(
+            question_depth_instruction=depth_instruction,
+            hint_policy_instruction=hint_instruction,
+            quiz_difficulty_instruction=quiz_diff_instruction
+        )
+    else:
+        # For Narrative and Direct, just inject quiz difficulty
+        context = base_prompt.format(quiz_difficulty_instruction=quiz_diff_instruction)
+    
     if personality == "Direct":
         context += "\n\nIMPORTANT: Only use [QUIZ] tags for the 3-question quiz at the end. Do not use [MINI-Q] tags."
     else:
@@ -1267,9 +1493,52 @@ def page_chat():
 
         pending_type = st.session_state.question_type
         if st.session_state.awaiting_answer and pending_type:
+            # Calculate response time
+            import time
+            current_time = time.time()
+            response_time = current_time - st.session_state.get("last_question_time", current_time)
+            
             is_valid, xp, reason = check_answer_quality(
                 query, pending_type, st.session_state.personality
             )
+            
+            # Record bandit rewards
+            if pending_type == "quiz":
+                # Quiz difficulty reward
+                if response_time < 120 and is_valid and xp > 0:  # < 2 minutes, correct
+                    difficulty_reward = 1.0
+                elif response_time < 120 and not is_valid:  # < 2 minutes, incorrect (too hard?)
+                    difficulty_reward = 0.3
+                else:  # > 2 minutes (timeout or disengaged)
+                    difficulty_reward = 0.0 if response_time > 180 else 0.5
+                
+                record_bandit_reward("quiz_difficulty", st.session_state.get("quiz_difficulty", "MEDIUM"), difficulty_reward)
+                
+                # Re-select difficulty for next quiz
+                context = {"user_level": st.session_state.level, "xp": st.session_state.xp}
+                st.session_state.quiz_difficulty = select_bandit_action("quiz_difficulty", context)
+            
+            # For Socratic: track hint policy and question depth rewards
+            if st.session_state.personality == "Socratic":
+                # Depth reward: good if answered correctly and not too slow
+                if is_valid and xp > 0:
+                    if response_time < 90:
+                        depth_reward = 1.0  # Quick and correct
+                    elif response_time < 180:
+                        depth_reward = 0.7  # Correct but slow
+                    else:
+                        depth_reward = 0.4  # Very slow
+                elif "idk" not in query.lower() and "don't know" not in query.lower():
+                    depth_reward = 0.4  # Trying but incorrect
+                else:
+                    depth_reward = 0.1  # Gave up
+                
+                record_bandit_reward("question_depth", st.session_state.get("question_depth", "DEEP_PROBE"), depth_reward)
+                
+                # Re-select for next question
+                context = {"engagement": depth_reward, "level": st.session_state.level}
+                st.session_state.question_depth = select_bandit_action("question_depth", context)
+            
             if is_valid and xp > 0:
                 award_xp(xp, reason or f"{pending_type.title()} response")
                 metadata = {
@@ -1277,6 +1546,7 @@ def page_chat():
                     "xp_awarded": xp,
                     "reason": reason,
                     "personality": st.session_state.personality,
+                    "response_time": response_time,
                 }
                 if st.session_state.challenge_active:
                     award_xp(10, "Challenge bonus")
@@ -1323,12 +1593,23 @@ def page_chat():
         elif personality in ["Socratic", "Narrative"] and st.session_state.message_count_for_lp_update >= 3:
             update_learning_point_progress()
             st.session_state.message_count_for_lp_update = 0
+            # Also check if current learning point is understood
+            if check_learning_point_understanding():
+                st.toast("Learning point mastered!", icon="✓")
         
         save_persisted_state()
         
         if question_type:
             st.session_state.awaiting_answer = True
             st.session_state.question_type = question_type
+            # Record question start time for bandit timeout tracking
+            import time
+            st.session_state.last_question_time = time.time()
+            
+            # Select adaptive settings before next question (for display)
+            if question_type == "quiz":
+                context = {"level": st.session_state.level, "xp": st.session_state.xp}
+                st.session_state.quiz_difficulty = select_bandit_action("quiz_difficulty", context)
         
         st.rerun()
 
