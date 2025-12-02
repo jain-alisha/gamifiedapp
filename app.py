@@ -28,42 +28,78 @@ LEARNING_CONCEPTS = [
                 "title": "Origins & Expansion",
                 "description": "How the Silk Road began and grew",
                 "unlocked": True,
-                "mastered": False
+                "mastered": False,
+                "learning_points": [
+                    "Zhang Qian's mission to Central Asia (138-126 BCE)",
+                    "Han Dynasty's role in establishing trade routes",
+                    "Why it's called the 'Silk Road' (Ferdinand von Richthofen, 1877)",
+                    "Initial connections between China, Persia, and Rome"
+                ]
             },
             {
                 "key": "northern_route",
                 "title": "Northern Route",
                 "description": "Through Central Asia and the steppes",
                 "unlocked": False,
-                "mastered": False
+                "mastered": False,
+                "learning_points": [
+                    "Path through the Eurasian steppes",
+                    "Major cities: Samarkand, Bukhara, Merv",
+                    "Role of nomadic tribes (Sogdians, Turks)",
+                    "Climate and terrain challenges"
+                ]
             },
             {
                 "key": "southern_route",
                 "title": "Southern Route",
                 "description": "Through the oases and deserts",
                 "unlocked": False,
-                "mastered": False
+                "mastered": False,
+                "learning_points": [
+                    "Path along the Taklamakan Desert oases",
+                    "Major cities: Kashgar, Khotan, Dunhuang",
+                    "Desert survival and caravanserais",
+                    "Connection to maritime routes"
+                ]
             },
             {
                 "key": "goods_trade",
                 "title": "Goods & Trade",
                 "description": "Silk, spices, jade, and more",
                 "unlocked": False,
-                "mastered": False
+                "mastered": False,
+                "learning_points": [
+                    "Chinese exports: silk, porcelain, tea, paper",
+                    "Western exports: gold, silver, glassware, wool",
+                    "Central Asian goods: horses, jade, spices",
+                    "How goods changed value along the route"
+                ]
             },
             {
                 "key": "cultural_exchange",
                 "title": "Cultural Exchange",
                 "description": "Ideas, religions, and technologies",
                 "unlocked": False,
-                "mastered": False
+                "mastered": False,
+                "learning_points": [
+                    "Spread of Buddhism from India to China",
+                    "Introduction of paper and gunpowder to the West",
+                    "Exchange of artistic styles and techniques",
+                    "Language and writing system influences"
+                ]
             },
             {
                 "key": "political_powers",
                 "title": "Political Powers",
                 "description": "Empires controlling the routes",
                 "unlocked": False,
-                "mastered": False
+                "mastered": False,
+                "learning_points": [
+                    "Han and Tang Dynasties (China)",
+                    "Persian Empires (Parthian, Sasanian)",
+                    "Byzantine Empire's role",
+                    "Mongol Empire's impact on trade unification"
+                ]
             },
         ],
     },
@@ -291,90 +327,113 @@ def upload_pdf_to_gemini(pdf_path: str):
 PERSONALITY_PROMPTS = {
     "Socratic": '''You are a Socratic-style history tutor who guides students through layered questioning so they uncover answers themselves.
 
-Always:
-- Begin each new topic with a concise primer (1–2 key facts) before asking the first question, so learners who have not seen the material can engage.
-- Ask open-ended, thought-provoking questions ("Why do you think ...?", "What evidence supports that?").
-- Build on the student's answers, going one layer deeper each time, and provide scaffolding or hints if they seem unsure.
-- Reference historical context to ground the discussion without delivering long lectures.
-- Reward reasoning supported by evidence with +10 XP and brief positive feedback.
-- After three to four guided questions, summarise what the student reasoned correctly and encourage reflection.
-- When challenge mode is activated, present a difficult [QUIZ] question that requires synthesis and deep understanding.
+CURRENT SUBTOPIC STRUCTURE:
+You must cover specific learning points for each subtopic. The current subtopic has 4 key learning points you need to address. Stay focused on these points and avoid tangents.
 
-If the learner says they do not know, offer a short explanation or hint, then follow up with a simpler question.
+YOUR TEACHING FLOW:
+1. Start with a brief context-setter (1-2 sentences) about the current learning point
+2. Ask ONE focused [MINI-Q] question that targets that specific learning point
+3. After student answers, give brief feedback and move to the next learning point
+4. After covering ALL 4 learning points, present a final synthesis [QUIZ] question
+5. When user gets quiz right, the subtopic is mastered
 
-Tone: respectful, curious, mentor-like. Guide discovery step-by-step.
+CRITICAL RULES:
+- ONE question at a time, never multiple questions in one response
+- Stay laser-focused on the 4 learning points for the current subtopic
+- Do NOT explore random tangents or additional details beyond the learning points
+- Each [MINI-Q] should take 2-3 exchanges max before moving to next learning point
+- Use [MINI-Q] tag before every question (10 XP per correct answer)
+- Use [QUIZ] tag for the final synthesis question (25 XP)
+- After [QUIZ] is answered correctly, ask which subtopic to explore next
 
-Tagging rules:
-- Use [MINI-Q] before learning checkpoint questions worth 10 XP.
-- Use [QUIZ] before mastery questions that validate understanding (25 XP).
-- Challenge questions should always be [QUIZ] tagged.
+RESPONSE FORMAT:
+Brief context (1-2 sentences)
+[MINI-Q] One focused question about the current learning point
+
+Tone: respectful, curious, focused. Guide efficiently through the material.
 ''',
 
     "Narrative": '''You are a narrative-style history tutor who teaches through immersive storytelling and historical role-play.
 
-Always:
-- Frame each topic as a short scene or chapter with time, place, and emotion.
-- Give the student a role inside the story and ask what they see, feel, or predict.
-- Reward thoughtful or empathetic responses with XP (+10 XP for accurate historical insight, +5 XP for creative engagement).
-- Reveal what actually happened and explain its significance after the student responds.
-- Keep story segments to three to five interactions, then recap key facts.
-- When challenge mode is activated, present a difficult scenario-based [QUIZ] question that tests deep contextual understanding.
+CURRENT SUBTOPIC STRUCTURE:
+You must cover specific learning points for each subtopic. The current subtopic has 4 key learning points you need to address through storytelling.
 
-Tone: cinematic, engaging, vivid. Avoid dry fact lists.
+YOUR TEACHING FLOW:
+1. Frame each learning point as a short immersive scene (3-4 sentences)
+2. Ask ONE [MINI-Q] question that connects the scene to the learning point
+3. After student responds, reveal what happened and explain significance
+4. Move to next learning point with a new scene
+5. After covering ALL 4 learning points, present a final scenario-based [QUIZ] question
+6. When user gets quiz right, the subtopic is mastered
 
-Tagging rules:
-- Use [MINI-Q] for in-story checkpoints (award 5–10 XP depending on depth of response).
-- Use [QUIZ] for short end-of-story quizzes (25 XP for correct answers).
-- Challenge questions should always be [QUIZ] tagged.
+CRITICAL RULES:
+- Cover all 4 learning points in order, one scene per point
+- Keep scenes concise (3-4 sentences max)
+- ONE question per response, never multiple
+- Stay focused on the learning points, no tangents
+- Use [MINI-Q] tag before every question (5-10 XP depending on depth)
+- Use [QUIZ] tag for final synthesis question (25 XP)
+- After [QUIZ] is answered correctly, ask which subtopic to explore next
+
+RESPONSE FORMAT:
+[Immersive scene describing the learning point]
+[MINI-Q] One question about what the student sees/feels/predicts
+
+Tone: cinematic, engaging, focused. Tell stories that illuminate the learning points.
 ''',
 
     "Direct": '''You are a direct, structured history tutor who delivers curriculum-aligned lessons clearly and efficiently.
 
-YOUR TEACHING FLOW:
-1. Present content in 2-3 concise teaching segments (3-4 sentences each)
-2. After each segment, ask "Ready to continue?" or "Any questions?" (user replies yes/no or asks questions)
-3. After 2-3 segments when you've covered the subtopic thoroughly, say "Let's test your understanding with a quiz" and present exactly 3 [QUIZ] questions
-4. User must get 3/3 correct to move on. If they miss any, re-teach that specific part they got wrong, then quiz again
-5. When user gets 3/3, congratulate them and ask what subtopic to explore next
+CURRENT SUBTOPIC STRUCTURE:
+You must teach specific learning points for each subtopic. The current subtopic has 4 key learning points you need to cover.
 
-IMPORTANT RULES:
-- DO NOT use [MINI-Q] tags - you only teach, then quiz
-- DO NOT ask comprehension questions during teaching - save all assessment for the quiz
-- User should only reply yes/no/questions during teaching, then answer the 3 quiz questions
+YOUR TEACHING FLOW:
+1. Teach learning point 1 in 2-3 clear sentences, ask "Ready for the next point?"
+2. Teach learning point 2 in 2-3 clear sentences, ask "Any questions before we continue?"
+3. Teach learning point 3 in 2-3 clear sentences, ask "Makes sense so far?"
+4. Teach learning point 4 in 2-3 clear sentences, say "Great! Let's test your understanding with a quiz."
+5. Present exactly 3 [QUIZ] questions covering all 4 learning points
+6. User must get 3/3 correct to master the subtopic
+7. If they miss any, re-teach that specific point and quiz again
+8. When user gets 3/3, ask which subtopic to explore next
+
+CRITICAL RULES:
+- Cover all 4 learning points in order
+- User only replies yes/no/questions during teaching (not assessed)
+- NO [MINI-Q] tags - only teach, then quiz at the end
 - Each [QUIZ] question is worth 25 XP
-- Keep teaching segments short and clear
 - After 3/3 correct, the subtopic is mastered and sidebar updates
 
 QUIZ FORMAT:
-When ready to quiz, say "Let's test your understanding with a quiz on [subtopic]" then present:
+"Let's test your understanding with a quiz on [subtopic name]"
 [QUIZ] Question 1: [question]
-Wait for answer, give feedback, then:
+(wait for answer)
 [QUIZ] Question 2: [question]
-Wait for answer, give feedback, then:
+(wait for answer)
 [QUIZ] Question 3: [question]
 
-If they get any wrong, note which concepts need review, re-teach those specific parts briefly, then quiz again on just those concepts.
-
-Tone: friendly, clear, supportive — like a teacher reviewing notes alongside the student.
+Tone: friendly, clear, efficient.
 '''
 }
 
 INTRO_PROMPTS = {
     "Socratic": (
-        "Introduce yourself warmly, give a short primer (2-3 sentences) on an accessible history topic "
-        "of your choice, and explain the key idea so a learner without prior reading can follow. Ask "
-        "what part they would like to explore next. Do not include [MINI-Q] or [QUIZ] tags yet."
+        "Welcome! I'll guide you through the Silk Road using the Socratic method. "
+        "For each subtopic, I have 4 specific learning points to cover with you through questions. "
+        "I'll ask focused questions to help you discover the answers. Let's start with the first subtopic: Origins & Expansion. "
+        "Ready to begin?"
     ),
     "Narrative": (
-        "Greet the learner and drop them into a brief story scene that teaches an important history "
-        "moment. Provide the essential context in a few sentences and invite them to choose what to "
-        "experience or understand next. Avoid [MINI-Q] or [QUIZ] tags in this welcome."
+        "Welcome! I'll teach you about the Silk Road through immersive stories and scenes. "
+        "For each subtopic, I have 4 key learning points to cover through storytelling. "
+        "You'll experience history firsthand through these narratives. Let's start with the first subtopic: Origins & Expansion. "
+        "Ready to begin your journey?"
     ),
     "Direct": (
-        "Welcome the learner warmly. Explain that you'll teach them about topics in clear segments, "
-        "they can ask questions or say 'continue' to proceed, and after covering a subtopic you'll give "
-        "them a 3-question quiz. Tell them which subtopic you'll start with and ask if they're ready to begin. "
-        "Do not start teaching yet - wait for their confirmation."
+        "Welcome! I'll teach you about the Silk Road in a clear, structured way. "
+        "For each subtopic, I'll cover 4 key learning points, then give you a 3-question quiz. "
+        "You need 3/3 correct to master each subtopic. Let's start with Origins & Expansion. "
+        "Ready to begin?"
     ),
 }
 
@@ -456,6 +515,20 @@ def build_tutor_context(personality: str, pdf_ref=None) -> str:
     else:
         context += "\n- Award 25 XP for each correct [QUIZ] answer. Students must get 3/3 to master the subtopic."
     
+    # Add current subtopic learning points
+    current_subtopic_key = st.session_state.get("current_subtopic")
+    if current_subtopic_key:
+        for concept in LEARNING_CONCEPTS:
+            for subtopic in concept.get("subtopics", []):
+                if subtopic["key"] == current_subtopic_key:
+                    learning_points = subtopic.get("learning_points", [])
+                    if learning_points:
+                        context += f"\n\nCURRENT SUBTOPIC: {subtopic['title']}"
+                        context += f"\n\nYou must cover these 4 learning points in order:"
+                        for i, point in enumerate(learning_points, 1):
+                            context += f"\n{i}. {point}"
+                        context += "\n\nStay focused on these points. Do not add extra details or explore tangents."
+    
     if pdf_ref:
         context += (
             "\n\nCURRICULUM INTEGRATION: Use the uploaded PDF only as background knowledge. Summarise or paraphrase ideas in fresh language so the learner gets a self-contained explanation. Never quote the PDF verbatim. When a fact originated from the PDF, mention the page unobtrusively in parentheses (e.g., '(p. 4)') after your own explanation. The learner should not need to open the PDF to follow along."
@@ -499,12 +572,25 @@ def chat_with_tutor(model, personality: str, user_message: str, pdf_ref=None) ->
 
 def parse_tutor_response(response: str):
     question_type = None
+    
+    # Check for explicit tags first
     if "[MINI-Q]" in response:
         question_type = "mini"
         response = response.replace("[MINI-Q]", "**Mini-Question:**")
     elif "[QUIZ]" in response:
         question_type = "quiz"
         response = response.replace("[QUIZ]", "**Quiz:**")
+    # If no tags but mentions "+10 XP" or similar, treat as mini question
+    elif ("+10 XP" in response or "+10XP" in response or "+ 10 XP" in response):
+        question_type = "mini"
+        # Add the tag indicator
+        if "?" in response:  # Contains a question
+            response = "**Mini-Question:** " + response
+    elif ("+5 XP" in response or "+5XP" in response):
+        question_type = "mini"
+        if "?" in response:
+            response = "**Mini-Question:** " + response
+    
     return response, question_type
 
 
@@ -519,12 +605,6 @@ def ensure_initial_tutor_message(model):
 
     personality = st.session_state.personality
     prompt = INTRO_PROMPTS.get(personality, INTRO_PROMPTS["Direct"])
-    concept = get_concept()
-    prompt += (
-        f"\n\nActive concept: {concept['title']}. "
-        f"Offer two to three learning routes the student can choose from related to {concept['description']}"
-        " and invite them to pick one."
-    )
 
     with st.spinner("Tutor is getting ready..."):
         reply = chat_with_tutor(
@@ -872,35 +952,34 @@ def page_chat():
             chip_query = active_concept["starter"]
             chip_topic = active_concept["title"]
     with challenge_col:
-        if st.session_state.challenge_active:
-            st.success("Challenge armed • +10 bonus XP on your next correct answer")
-            if st.button("Cancel challenge", use_container_width=True, key="cancel_challenge_chat"):
-                st.session_state.challenge_active = False
-                save_persisted_state()
-        else:
-            if st.button("Challenge Question", use_container_width=True, help="Receive a tough question for bonus XP"):
-                st.session_state.challenge_active = True
-                # Prompt tutor for challenge question
-                challenge_prompt = (
-                    "Present a challenging [QUIZ] question that tests deep understanding of "
-                    f"{st.session_state.current_topic}. Make it thought-provoking and worthy of bonus XP. "
-                    "The student has activated challenge mode."
-                )
+        if st.button("Challenge Question", use_container_width=True, help="Get a tough synthesis question on everything discussed"):
+            # Immediately send challenge prompt
+            challenge_prompt = "Give me a challenge question on everything we've discussed in this chat so far. This should test deep synthesis and understanding across multiple concepts."
+            
+            st.session_state.messages.append(
+                Message(role="user", content=challenge_prompt, metadata=None)
+            )
+            save_persisted_state()
+            
+            with st.spinner("Preparing challenge question..."):
                 reply = chat_with_tutor(
                     model,
                     st.session_state.personality,
                     challenge_prompt,
                     st.session_state.pdf_file_ref
                 )
-                clean_reply, question_type = parse_tutor_response(reply)
-                st.session_state.messages.append(
-                    Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
-                )
-                st.session_state.awaiting_answer = True
-                st.session_state.question_type = question_type or "quiz"
-                save_persisted_state()
-                st.toast("Challenge armed! Answer the tough question for +10 bonus XP.", icon="⚡")
-                st.rerun()
+            
+            clean_reply, question_type = parse_tutor_response(reply)
+            
+            st.session_state.messages.append(
+                Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
+            )
+            
+            st.session_state.awaiting_answer = True
+            st.session_state.question_type = question_type or "quiz"
+            st.session_state.challenge_active = True
+            save_persisted_state()
+            st.rerun()
 
     st.markdown("##### Quick starts:")
     pp1, pp2, pp3, pp4 = st.columns([1.4, 1.6, 1.8, 2])
