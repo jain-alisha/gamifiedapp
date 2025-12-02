@@ -945,20 +945,33 @@ def page_chat():
 
     with st.container(border=True):
         for idx, m in enumerate(st.session_state.messages):
-            with st.chat_message(m.role):
-                if m.role == "user":
+            # Handle both dict and Message object formats
+            if isinstance(m, dict):
+                role = m.get("role")
+                content = m.get("content")
+                metadata = m.get("metadata")
+            else:
+                role = m.role
+                content = m.content
+                metadata = m.metadata if hasattr(m, "metadata") else None
+            
+            with st.chat_message(role):
+                if role == "user":
                     col1, col2 = st.columns([6, 1])
                     with col1:
                         if st.session_state.get("editing_message_idx") == idx:
                             edited_text = st.text_area(
                                 "Edit message",
-                                value=m.content,
+                                value=content,
                                 key=f"edit_{idx}",
                                 label_visibility="collapsed"
                             )
                             if st.button("Save", key=f"save_{idx}"):
                                 # Update the message
-                                st.session_state.messages[idx].content = edited_text
+                                if isinstance(st.session_state.messages[idx], dict):
+                                    st.session_state.messages[idx]["content"] = edited_text
+                                else:
+                                    st.session_state.messages[idx].content = edited_text
                                 st.session_state.editing_message_idx = None
                                 
                                 # Remove all messages after this one
@@ -986,14 +999,14 @@ def page_chat():
                                 save_persisted_state()
                                 st.rerun()
                         else:
-                            st.markdown(m.content)
+                            st.markdown(content)
                     with col2:
                         if st.session_state.get("editing_message_idx") != idx:
                             if st.button("Edit", key=f"edit_btn_{idx}"):
                                 st.session_state.editing_message_idx = idx
                                 st.rerun()
                 else:
-                    st.markdown(m.content)
+                    st.markdown(content)
 
     user_input = st.chat_input("Ask a question or answer the tutor...")
     query = chip_query or user_input
@@ -1255,6 +1268,7 @@ def show_login_page():
             login = st.form_submit_button("Sign in")
         with col2:
             register = st.form_submit_button("Register")
+    
     if login and username and password:
         user_id = db.authenticate_user(username.strip(), password)
         if user_id:
@@ -1265,6 +1279,7 @@ def show_login_page():
             st.rerun()
         else:
             st.error("Invalid username or password.")
+    
     if register and username and password:
         created = db.create_user(username.strip(), password)
         if created:
@@ -1302,12 +1317,36 @@ def main():
         try:
             state = db.get_user_state(st.session_state["user_id"])
             if isinstance(state, dict):
+                # Load messages properly as Message objects
+                persisted_messages = state.get("messages")
+                if isinstance(persisted_messages, list) and persisted_messages:
+                    restored = []
+                    for payload in persisted_messages:
+                        if not isinstance(payload, dict):
+                            continue
+                        role = payload.get("role")
+                        content = payload.get("content")
+                        if role and content is not None:
+                            restored.append(
+                                Message(
+                                    role=role,
+                                    content=content,
+                                    metadata=payload.get("metadata"),
+                                )
+                            )
+                    if restored:
+                        st.session_state.messages = restored
+                
+                # Load other state
                 for k, v in state.items():
-                    if k in ("xp", "level", "concept_progress", "subtopic_progress", "current_concept", "current_subtopic", "current_topic", "messages", "personality", "challenge_active"):
+                    if k == "messages":
+                        continue  # Already handled above
+                    if k in ("xp", "level", "concept_progress", "subtopic_progress", "current_concept", "current_subtopic", "current_topic", "personality", "challenge_active"):
                         st.session_state[k] = v
+                
                 st.session_state.db_state_loaded = True
-        except Exception:
-            pass
+        except Exception as e:
+            st.error(f"Error loading saved state: {e}")
 
     sidebar_nav()
 
