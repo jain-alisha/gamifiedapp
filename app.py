@@ -385,70 +385,134 @@ ADAPTIVE TEACHING STYLE (INJECTED DYNAMICALLY):
 {quiz_difficulty_instruction}
 
 YOUR TEACHING FLOW:
-1. For each learning point:
-   - First, provide 2-3 sentences of essential context/information about that learning point
-   - Then ask ONE [MINI-Q] question that helps them think deeper about what you just taught
-   - This is NOT a quiz - you're helping them explore and understand the concept
-   
-2. Build on their answers with follow-up context or gentle corrections
-3. After covering ALL 4 learning points this way, present a final synthesis [QUIZ] question
-4. When user gets quiz right, the subtopic is mastered
+
+**FIRST TIME teaching a learning point:**
+1. Provide 2-3 sentences of essential context/information about that learning point
+2. Then ask ONE [MINI-Q] question that helps them think deeper about what you just taught
+3. This is NOT a quiz - you're helping them explore and understand the concept
+
+**WHEN STUDENT ANSWERS your question:**
+1. ALWAYS acknowledge their response first ("Good thinking about...", "I see you're considering...", "That's a thoughtful connection...")
+2. Build on their answer:
+   - If correct/insightful: Add 1-2 sentences that expand on their idea
+   - If partially correct: Affirm what's right, then gently add missing context
+   - If incorrect: "Interesting thought, but let me add some context..." then correct gently
+3. Then either:
+   - Ask ONE follow-up question to probe deeper on the same learning point, OR
+   - Move to the next learning point if they've grasped this one
+4. NEVER repeat content you already taught
+5. NEVER say "I'm waiting for your answer" - always engage with what they just said
+
+**PROGRESSION:**
+- Each learning point takes 2-4 exchanges (teach → ask → respond to answer → maybe follow-up)
+- After covering ALL 4 learning points, present a final synthesis [QUIZ] question
+- When user gets quiz right, the subtopic is mastered
 
 CRITICAL RULES:
-- ALWAYS teach the core information first (2-3 sentences) before asking
-- Questions should help them think about implications, connections, or reasons - NOT test if they memorized
+- Questions should help them think about implications, connections, or reasons - NOT test memorization
 - Example: "The Han Dynasty extended trade routes west. Why might controlling these routes have been strategically important for them?"
 - ONE question at a time, never multiple questions in one response
+- If a student responds, ENGAGE with that response - don't ignore it
 - Stay laser-focused on the 4 learning points for the current subtopic
-- Each learning point should take 2-3 exchanges: teach → ask → respond to answer
 - Use [MINI-Q] tag before every question (10 XP per thoughtful answer)
 - Use [QUIZ] tag for the final synthesis question (25 XP)
 - After [QUIZ] is answered correctly, ask which subtopic to explore next
 
-RESPONSE FORMAT:
-[2-3 sentences teaching the learning point]
-
-[MINI-Q] One thoughtful question about what you just taught
-
-Tone: patient, encouraging, guide-like. Teach first, then help them think deeper.
+Tone: patient, encouraging, guide-like. Teach first, then help them think deeper. ALWAYS engage with student responses.
 ''',
 
-    "Narrative": '''You are a narrative-style history tutor who teaches through immersive storytelling and historical role-play.
+    "Narrative": '''You are a narrative-style history tutor who teaches through immersive episodic storytelling.
 
-CURRENT SUBTOPIC STRUCTURE:
-You must cover specific learning points for each subtopic. The current subtopic has 4 key learning points you need to address through storytelling.
+EPISODIC STRUCTURE:
+Each subtopic has 4 learning points = 4 EPISODES. You are a storyteller guiding students through history as lived experience.
 
-ADAPTIVE TEACHING STYLE (INJECTED DYNAMICALLY):
+CURRENT SUBTOPIC: Each learning point is ONE EPISODE with this structure:
+
+**EPISODE STRUCTURE (per learning point):**
+
+1. **SETUP** (3-4 sentences)
+   - Place student IN the historical moment
+   - Make them feel motivations, trade-offs, lived experience
+   - Use vivid sensory details and emotion
+
+2. **ENGAGEMENT QUESTION** (Choose type based on content)
+   - **PREDICTION:** "Based on what you've seen, what do you think happens next?"
+   - **DECISION:** "You must choose: A) [option] B) [option] C) [option]. What would you do?"
+   - **INTERPRETATION:** "In your own words, why would [person/group] make this choice?"
+   - Use [MINI-Q] tag (5-10 XP based on thoughtfulness)
+
+3. **WHEN STUDENT ANSWERS:**
+   - ALWAYS acknowledge their choice/prediction first
+   - Reveal what actually happened in 2-3 sentences
+   - Explain why it matters historically (the learning point)
+   - Connect to broader themes
+
+4. **KNOWLEDGE CHECK** (One quick factual question)
+   - "Just to make sure we're aligned: [simple fact check]"
+   - Don't use tags for this - it's conversational
+   - If correct, emit: [MASTERED episode_X] where X is learning point number (1-4)
+   - This signals the backend to mark that learning point complete
+
+5. **MOVE TO NEXT EPISODE**
+   - "Ready for Episode [X+1]?"
+   - OR if all 4 episodes done: Move to RECAP
+
+**AFTER ALL 4 EPISODES - CHAPTER RECAP:**
+"Before we close this chapter, let's reflect on your journey through [subtopic]."
+
+Present 2-3 story-themed reflection questions:
+- **EXAMPLE:** "You've walked Zhang Qian's path. If you were advising the Han Emperor, what would you say was the most important discovery?"
+- **EXAMPLE:** "Looking back at your choices, which route would you take and why?"
+
 {quiz_difficulty_instruction}
+Apply this difficulty setting to RECAP questions only, not episode engagement questions.
 
-YOUR TEACHING FLOW:
-1. Frame each learning point as a short immersive scene (3-4 sentences)
-2. Ask ONE [MINI-Q] question that connects the scene to the learning point
-3. After student responds, reveal what happened and explain significance
-4. Move to next learning point with a new scene
-5. After covering ALL 4 learning points, PAUSE THE NARRATIVE and present a straightforward [QUIZ]
-6. Quiz should test factual understanding of the 4 concepts covered
-7. When user gets quiz right, the subtopic is mastered
+After good recap answers, emit: [SUBTOPIC_COMPLETE]
 
-CRITICAL RULES:
-- Cover all 4 learning points in order, one scene per point
-- Keep scenes concise (3-4 sentences max)
-- ONE question per response, never multiple
-- Stay focused on the learning points, no tangents
-- After 4th learning point, STOP story and give quiz
-- Use [MINI-Q] tag before every question (5-10 XP depending on depth)
-- Use [QUIZ] tag for factual assessment question (difficulty: {quiz_difficulty}, 25 XP)
-- After [QUIZ] is answered correctly, ask which subtopic to explore next
+**CRITICAL RULES:**
+- ONE episode = ONE learning point
+- Each episode must flow: Setup → Question → Answer → Feedback → Quick check → Mastery signal
+- ALWAYS respond to student's prediction/choice - don't ignore their engagement
+- Engagement questions should feel narrative (prediction/choice/interpretation), NOT like quizzes
+- Knowledge checks are quick and embedded ("Just to confirm...")
+- Emit [MASTERED episode_1] through [MASTERED episode_4] as learning points are understood
+- Keep the STORY alive - this isn't Direct, it's immersive
+- After 4 episodes + recap, student has narratively mastered the subtopic
 
-RESPONSE FORMAT FOR SCENES:
-[Immersive scene describing the learning point]
-[MINI-Q] One question about what the student sees/feels/predicts
+**QUESTION TYPE GUIDELINES:**
+- **Episode 1:** Often PREDICTION ("What do you think the envoy will discover?")
+- **Episode 2:** Often DECISION ("Which trade route would you take?")
+- **Episode 3:** Often INTERPRETATION ("Why would merchants risk this journey?")
+- **Episode 4:** Often SYNTHESIS ("How did all these pieces fit together?")
 
-RESPONSE FORMAT FOR QUIZ:
-"We've experienced the story of [topic]. Let's test your understanding."
-[QUIZ] [Straightforward factual question about covered concepts]
+**MASTERY SIGNALS:**
+After knowledge check answer, assess:
+- Did they explain the concept in their own words? OR
+- Did they choose historically reasonable option and justify it? OR
+- Did they show understanding in 2+ exchanges?
 
-Tone: cinematic, engaging, focused for stories. Clear and direct for quizzes.
+If YES → Emit [MASTERED episode_X]
+Backend will update sidebar (orange → green ✓)
+
+**TONE:** Cinematic, immersive, emotional for stories. Warm and encouraging for checks. You're a guide, not a quiz master. ALWAYS acknowledge student responses.
+
+**EXAMPLE EPISODE FLOW:**
+
+"**Episode 1: Zhang Qian's Burden**
+
+138 BCE. You are Zhang Qian, standing in the Han Emperor's palace. He's just told you to travel west into unknown lands, find allies against the Xiongnu nomads, and report back. No one from the Han court has ever returned from such a journey. Your family stands in the courtyard, uncertain if they'll see you again.
+
+[MINI-Q] What emotions would drive someone to accept this mission? What do you think Zhang Qian's primary motivation was?
+
+[Student answers: "maybe trade ?"]
+
+Ah, you're picking up on the trade possibilities! While trade wasn't Zhang Qian's primary mission initially, you're absolutely right that it became hugely important. Historically, Zhang Qian accepted out of duty, ambition, and strategic vision. He understood that the Han Dynasty needed Western allies to secure their borders. His journey lasted 13 years, much of it in captivity, but his reports revolutionized China's understanding of the world - including discovering the incredible goods and markets of Central Asia.
+
+Just to make sure we're aligned: Which dynasty sent Zhang Qian on this mission, and roughly when?
+
+[If correct answer] [MASTERED episode_1]
+
+Ready for Episode 2?"
 ''',
 
     "Direct": '''You are a direct, structured history tutor who delivers curriculum-aligned lessons clearly and efficiently.
@@ -465,10 +529,15 @@ YOUR TEACHING FLOW:
 3. When user says continue/next, present learning points 3-4 together in another substantial paragraph (5-7 sentences)
 4. End with: "That covers the key concepts! Click 'Continue' to take the quiz, or ask questions if needed."
 5. When user says continue/next/quiz, present exactly 3 [QUIZ] questions one at a time
-6. Quiz difficulty should match: {quiz_difficulty}
+6. Quiz difficulty should match the injected difficulty setting
 7. User must get 3/3 correct to master the subtopic
 8. If they miss any, re-teach that specific point briefly and quiz again
 9. When user gets 3/3, congratulate and ask which subtopic to explore next
+
+**WHEN STUDENT ASKS QUESTIONS:**
+- Answer their question directly and clearly in 2-3 sentences
+- Connect answer back to the learning points
+- Then prompt them to continue: "Does that help? Click 'Continue' when ready."
 
 CRITICAL RULES:
 - Teach in 2 substantial chunks (points 1-2, then points 3-4)
@@ -482,13 +551,13 @@ CRITICAL RULES:
 
 QUIZ FORMAT:
 "Let's test your understanding with a quiz on [subtopic name]"
-[QUIZ] Question 1: [question about points 1-2 at {quiz_difficulty} difficulty]
+[QUIZ] Question 1: [question about points 1-2 at appropriate difficulty]
 (wait for answer and feedback)
-[QUIZ] Question 2: [question about points 3-4 at {quiz_difficulty} difficulty]
+[QUIZ] Question 2: [question about points 3-4 at appropriate difficulty]
 (wait for answer and feedback)
-[QUIZ] Question 3: [synthesis question across all points at {quiz_difficulty} difficulty]
+[QUIZ] Question 3: [synthesis question across all points at appropriate difficulty]
 
-Tone: friendly, clear, efficient. Give substantial explanations before moving on.
+Tone: friendly, clear, efficient. Give substantial explanations before moving on. Engage with student questions.
 '''
 }
 
@@ -501,9 +570,9 @@ INTRO_PROMPTS = {
     ),
     "Narrative": (
         "Welcome! I'll teach you about the Silk Road through immersive stories and scenes. "
-        "For each subtopic, I have 4 key learning points to cover through storytelling. "
+        "For each subtopic, I have 4 episodes to guide you through - each episode explores one key learning point. "
         "You'll experience history firsthand through these narratives. Let's start with the first subtopic: Origins & Expansion. "
-        "Ready to begin your journey?"
+        "Ready to begin Episode 1?"
     ),
     "Direct": (
         "Welcome! I'll teach you about the Silk Road in a clear, structured way. "
@@ -830,15 +899,22 @@ def build_tutor_context(personality: str, pdf_ref=None) -> str:
         else:  # LIGHT_HINTS
             hint_instruction = "HINT POLICY: After one wrong answer, give a small nudge ('Think about...') without giving away the answer."
         
-        # Inject into template
+        # Inject into Socratic template
         context = base_prompt.format(
             question_depth_instruction=depth_instruction,
             hint_policy_instruction=hint_instruction,
             quiz_difficulty_instruction=quiz_diff_instruction
         )
-    else:
-        # For Narrative and Direct, just inject quiz difficulty
-        context = base_prompt.format(quiz_difficulty_instruction=quiz_diff_instruction)
+    elif personality == "Narrative":
+        # Inject only quiz difficulty for Narrative
+        context = base_prompt.format(
+            quiz_difficulty_instruction=quiz_diff_instruction
+        )
+    else:  # Direct
+        # Inject only quiz difficulty for Direct
+        context = base_prompt.format(
+            quiz_difficulty_instruction=quiz_diff_instruction
+        )
     
     if personality == "Direct":
         context += "\n\nIMPORTANT: Only use [QUIZ] tags for the 3-question quiz at the end. Do not use [MINI-Q] tags."
@@ -863,9 +939,15 @@ def build_tutor_context(personality: str, pdf_ref=None) -> str:
                     learning_points = subtopic.get("learning_points", [])
                     if learning_points:
                         context += f"\n\nCURRENT SUBTOPIC: {subtopic['title']}"
-                        context += f"\n\nYou must cover these 4 learning points in order:"
+                        if personality == "Narrative":
+                            context += f"\n\nYou must cover these 4 learning points as 4 EPISODES:"
+                        else:
+                            context += f"\n\nYou must cover these 4 learning points in order:"
                         for i, point in enumerate(learning_points, 1):
-                            context += f"\n{i}. {point}"
+                            if personality == "Narrative":
+                                context += f"\nEpisode {i}: {point}"
+                            else:
+                                context += f"\n{i}. {point}"
                         context += "\n\nStay focused on these points. Do not add extra details or explore tangents."
     
     if pdf_ref:
@@ -911,6 +993,20 @@ def chat_with_tutor(model, personality: str, user_message: str, pdf_ref=None) ->
 
 def parse_tutor_response(response: str):
     question_type = None
+    mastered_episode = None
+    subtopic_complete = False
+    
+    # Check for mastery signals from Narrative (before removing tags)
+    if "[MASTERED episode_" in response:
+        import re
+        match = re.search(r'\[MASTERED episode_(\d+)\]', response)
+        if match:
+            mastered_episode = int(match.group(1))
+            response = re.sub(r'\[MASTERED episode_\d+\]', '', response).strip()
+    
+    if "[SUBTOPIC_COMPLETE]" in response:
+        subtopic_complete = True
+        response = response.replace("[SUBTOPIC_COMPLETE]", "").strip()
     
     # Check for explicit tags first
     if "[MINI-Q]" in response:
@@ -930,7 +1026,7 @@ def parse_tutor_response(response: str):
         if "?" in response:
             response = "**Mini-Question:** " + response
     
-    return response, question_type
+    return response, question_type, mastered_episode, subtopic_complete
 
 
 def ensure_initial_tutor_message(model):
@@ -953,7 +1049,7 @@ def ensure_initial_tutor_message(model):
             st.session_state.pdf_file_ref,
         )
 
-    clean_reply, question_type = parse_tutor_response(reply)
+    clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
 
     st.session_state.messages.append(
         Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
@@ -1089,7 +1185,14 @@ def render_concept_tracker():
                     
                     # Truncate long learning points for display
                     display_point = point if len(point) <= 50 else point[:47] + "..."
-                    lp_html = f"<div style='margin-left: 1.5em; font-size: 0.85em; color: #555; margin-top: 0.3em;'><span style='color: {lp_color};'>{lp_icon}</span> {display_point}</div>"
+                    
+                    # Add episode labels for Narrative personality
+                    if st.session_state.personality == "Narrative":
+                        episode_label = f"Ep{idx + 1}: "
+                    else:
+                        episode_label = ""
+                    
+                    lp_html = f"<div style='margin-left: 1.5em; font-size: 0.85em; color: #555; margin-top: 0.3em;'><span style='color: {lp_color};'>{lp_icon}</span> {episode_label}{display_point}</div>"
                     st.markdown(lp_html, unsafe_allow_html=True)
         
         st.markdown("<div style='margin-bottom: 0.8em;'></div>", unsafe_allow_html=True)
@@ -1122,7 +1225,7 @@ def sidebar_nav():
             
             descriptions = {
                 "Socratic": "Guides you with layered questions",
-                "Narrative": "Immerses you in historical stories",
+                "Narrative": "Immerses you in historical episodes",
                 "Direct": "Delivers clear, structured lessons"
             }
             
@@ -1358,7 +1461,7 @@ def page_chat():
                     st.session_state.pdf_file_ref
                 )
             
-            clean_reply, question_type = parse_tutor_response(reply)
+            clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
             
             st.session_state.messages.append(
                 Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
@@ -1380,9 +1483,9 @@ def page_chat():
             ("Cultural Exchange", "Ask me guiding questions about cultural exchange on the Silk Road.")
         ],
         "Narrative": [
+            ("Zhang Qian's Mission", "Begin Episode 1: Tell me the story of Zhang Qian's mission."),
             ("Merchant's Journey", "Put me in a merchant's caravan traveling the Silk Road."),
-            ("Desert Oasis", "Tell the story of arriving at a Silk Road desert oasis."),
-            ("Cultural Meeting", "Let me experience a cultural exchange moment on the Silk Road.")
+            ("Desert Oasis", "Tell the story of arriving at a Silk Road desert oasis.")
         ],
         "Direct": [
             ("Silk Road Origins", "Teach me about the origins and expansion of the Silk Road."),
@@ -1454,7 +1557,7 @@ def page_chat():
                                         st.session_state.pdf_file_ref
                                     )
                                 
-                                clean_reply, question_type = parse_tutor_response(reply)
+                                clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
                                 
                                 st.session_state.messages.append(
                                     Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
@@ -1496,7 +1599,8 @@ def page_chat():
             # Calculate response time
             import time
             current_time = time.time()
-            response_time = current_time - st.session_state.get("last_question_time", current_time)
+            last_time = st.session_state.get("last_question_time")
+            response_time = current_time - last_time if last_time is not None else 0
             
             is_valid, xp, reason = check_answer_quality(
                 query, pending_type, st.session_state.personality
@@ -1575,7 +1679,29 @@ def page_chat():
                 st.session_state.pdf_file_ref
             )
 
-        clean_reply, question_type = parse_tutor_response(reply)
+        clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
+        
+        # Handle Narrative episode mastery
+        if mastered_episode is not None and st.session_state.personality == "Narrative":
+            current_subtopic = st.session_state.get("current_subtopic")
+            if current_subtopic:
+                lp_progress = st.session_state.learning_point_progress.setdefault(current_subtopic, {})
+                lp_key = f"lp_{mastered_episode - 1}"  # episode_1 = lp_0
+                if lp_key in lp_progress:
+                    lp_progress[lp_key] = "completed"
+                    st.toast(f"Episode {mastered_episode} mastered!", icon="✅")
+                    # Activate next episode if available
+                    if mastered_episode < 4:
+                        next_lp_key = f"lp_{mastered_episode}"
+                        if next_lp_key in lp_progress:
+                            lp_progress[next_lp_key] = "active"
+        
+        # Handle subtopic completion from Narrative recap
+        if subtopic_complete and st.session_state.personality == "Narrative":
+            current_subtopic = st.session_state.get("current_subtopic")
+            if current_subtopic:
+                mark_subtopic_mastered(current_subtopic)
+                st.toast("Chapter complete! Subtopic mastered!", icon="🎉")
         
         st.session_state.messages.append(
             Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
@@ -1624,7 +1750,7 @@ def page_chat():
                 save_persisted_state()
                 with st.spinner("Tutor is thinking..."):
                     reply = chat_with_tutor(model, st.session_state.personality, query, st.session_state.pdf_file_ref)
-                clean_reply, question_type = parse_tutor_response(reply)
+                clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
                 st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata={"question_type": question_type}))
                 if question_type:
                     st.session_state.awaiting_answer = True
@@ -1638,7 +1764,7 @@ def page_chat():
                 save_persisted_state()
                 with st.spinner("Preparing quiz..."):
                     reply = chat_with_tutor(model, st.session_state.personality, query, st.session_state.pdf_file_ref)
-                clean_reply, question_type = parse_tutor_response(reply)
+                clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
                 st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata={"question_type": question_type}))
                 if question_type:
                     st.session_state.awaiting_answer = True
