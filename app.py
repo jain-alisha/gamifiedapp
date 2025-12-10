@@ -1,6 +1,7 @@
 import os
 import json
-from dataclasses import dataclass
+import time
+from dataclasses import dataclass, field
 from typing import List, Dict, Optional
 from pathlib import Path
 
@@ -164,20 +165,23 @@ def save_persisted_state():
         "question_depth": st.session_state.get("question_depth", "DEEP_PROBE"),
         "quiz_difficulty": st.session_state.get("quiz_difficulty", "MEDIUM"),
         "bandit_stats": st.session_state.get("bandit_stats", {}),
+        "intro_sent": st.session_state.get("intro_sent", False),
+        "narrative_episode": st.session_state.get("narrative_episode", 1),
+        "narrative_episode_phase": st.session_state.get("narrative_episode_phase", "setup"),
+        "hint_given_this_question": st.session_state.get("hint_given_this_question", False),
+        "current_hint_policy": st.session_state.get("current_hint_policy"),
+        "message_feedback": st.session_state.get("message_feedback", {}),
     }
     try:
         with STATE_FILE.open("w", encoding="utf-8") as f:
             json.dump(data, f)
     except Exception:
         st.warning("Unable to persist XP locally.")
-    # Also persist to SQLite for logged-in users
     try:
         user_id = st.session_state.get("user_id")
         if user_id:
-            # store same payload to DB
             db.save_user_state(user_id, data)
     except Exception:
-        # non-fatal: DB persistence shouldn't break UI
         pass
 
 @dataclass
@@ -191,7 +195,6 @@ def init_state():
     persisted_xp = persisted.get("xp", 0)
     computed_level = 1 + persisted_xp // NEXT_LEVEL_XP
     
-    # Initialize subtopic progress for Silk Road
     default_subtopic_progress = {}
     default_learning_point_progress = {}
     
@@ -200,14 +203,12 @@ def init_state():
             "unlocked": subtopic.get("unlocked", False),
             "mastered": subtopic.get("mastered", False),
         }
-        # Initialize learning point tracking (4 points per subtopic)
         default_learning_point_progress[subtopic["key"]] = {
             "lp_0": "locked",
             "lp_1": "locked",
             "lp_2": "locked",
             "lp_3": "locked",
         }
-        # If it's the first subtopic (origins_expansion), unlock first learning point
         if subtopic.get("unlocked"):
             default_learning_point_progress[subtopic["key"]]["lp_0"] = "active"
     
@@ -235,7 +236,6 @@ def init_state():
                 entry["unlocked"] = bool(stored.get("unlocked", entry["unlocked"]))
                 entry["mastered"] = bool(stored.get("mastered", entry["mastered"]))
     
-    # Load learning point progress
     persisted_lp = persisted.get("learning_point_progress")
     if isinstance(persisted_lp, dict):
         for key, entry in default_learning_point_progress.items():
@@ -244,6 +244,16 @@ def init_state():
                 for lp_key in ["lp_0", "lp_1", "lp_2", "lp_3"]:
                     if lp_key in stored:
                         entry[lp_key] = stored[lp_key]
+    
+    # Initialize default bandit stats with user feedback tracking
+    default_bandit_stats = {
+        "hint_policy_rewards": {"NO_AUTOMATIC_HINTS": [], "LIGHT_HINTS": [], "FULL_HINTS": []},
+        "depth_rewards": {"SHALLOW_CHECK": [], "DEEP_PROBE": []},
+        "difficulty_rewards": {"EASY": [], "MEDIUM": [], "HARD": []},
+        "user_feedback_rewards": {"NO_AUTOMATIC_HINTS": [], "LIGHT_HINTS": [], "FULL_HINTS": []},
+        "personality_feedback": {"Socratic": [], "Narrative": [], "Direct": []},
+        "response_quality_scores": [],
+    }
     
     defaults = {
         "page": "User Home",
@@ -259,7 +269,7 @@ def init_state():
         "chat_session": None,
         "chat_session_personality": None,
         "chat_session_pdf_id": None,
-        "intro_sent": False,
+        "intro_sent": persisted.get("intro_sent", False),
         "current_concept": persisted.get("current_concept", LEARNING_CONCEPTS[0]["key"]),
         "current_subtopic": persisted.get("current_subtopic", "origins_expansion"),
         "concept_progress": default_concept_progress,
@@ -276,26 +286,40 @@ def init_state():
         "user_id": persisted.get("user_id"),
         "username": persisted.get("username"),
         "message_count_for_lp_update": 0,
-        # Contextual bandit state
-        "hint_policy": persisted.get("hint_policy", "LIGHT_HINTS"),  # NO_AUTOMATIC_HINTS, LIGHT_HINTS, FULL_HINTS
-        "question_depth": persisted.get("question_depth", "DEEP_PROBE"),  # SHALLOW_CHECK, DEEP_PROBE
-        "quiz_difficulty": persisted.get("quiz_difficulty", "MEDIUM"),  # EASY, MEDIUM, HARD
+        "hint_policy": persisted.get("hint_policy", "LIGHT_HINTS"),
+        "question_depth": persisted.get("question_depth", "DEEP_PROBE"),
+        "quiz_difficulty": persisted.get("quiz_difficulty", "MEDIUM"),
         "last_question_time": None,
         "question_attempts": 0,
-        "bandit_stats": persisted.get("bandit_stats", {
-            "hint_policy_rewards": {"NO_AUTOMATIC_HINTS": [], "LIGHT_HINTS": [], "FULL_HINTS": []},
-            "depth_rewards": {"SHALLOW_CHECK": [], "DEEP_PROBE": []},
-            "difficulty_rewards": {"EASY": [], "MEDIUM": [], "HARD": []},
-        }),
+        "bandit_stats": persisted.get("bandit_stats", default_bandit_stats),
         "turns_since_lp_check": 0,
+        "narrative_episode": persisted.get("narrative_episode", 1),
+        "narrative_episode_phase": persisted.get("narrative_episode_phase", "setup"),
+        "hint_given_this_question": persisted.get("hint_given_this_question", False),
+        "current_hint_policy": persisted.get("current_hint_policy"),
+        "just_awarded_xp": False,
+        "pending_xp_context": None,
+        # New: Track user feedback on messages (message_idx -> "up" or "down")
+        "message_feedback": persisted.get("message_feedback", {}),
+        # New: Track the last question asked to avoid repeats
+        "last_question_asked": None,
     }
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
     
-    # If user_id was restored but db_state_loaded is False, trigger DB load
+    # Ensure bandit_stats has new keys for user feedback
+    bandit_stats = st.session_state.get("bandit_stats", {})
+    if "user_feedback_rewards" not in bandit_stats:
+        bandit_stats["user_feedback_rewards"] = {"NO_AUTOMATIC_HINTS": [], "LIGHT_HINTS": [], "FULL_HINTS": []}
+    if "personality_feedback" not in bandit_stats:
+        bandit_stats["personality_feedback"] = {"Socratic": [], "Narrative": [], "Direct": []}
+    if "response_quality_scores" not in bandit_stats:
+        bandit_stats["response_quality_scores"] = []
+    st.session_state.bandit_stats = bandit_stats
+    
     if st.session_state.get("user_id") and not st.session_state.get("db_state_loaded"):
-        st.session_state.db_state_loaded = False  # Ensure it loads on next render
+        st.session_state.db_state_loaded = False
     
     active_concept = get_concept()
     topic = st.session_state.get("current_topic")
@@ -320,24 +344,34 @@ def init_state():
                 )
         if restored:
             st.session_state.messages = restored
-            st.session_state.intro_sent = True
             st.session_state.awaiting_answer = False
             st.session_state.question_type = None
 
 def level_progress(xp: int) -> float:
     return min((xp % NEXT_LEVEL_XP) / NEXT_LEVEL_XP, 1.0)
 
-def award_xp(amount: int = 15, reason: str = ""):
+def award_xp(amount: int = 15, reason: str = "", skip_rerun: bool = False):
+    """Award XP with visible notification."""
     st.session_state.xp += amount
     new_level = 1 + st.session_state.xp // NEXT_LEVEL_XP
+    leveled_up = False
     if new_level > st.session_state.level:
         st.session_state.level = new_level
-        st.balloons()
-        st.success(f"🎉 Level up! You're now level {new_level}!")
+        leveled_up = True
+    
+    # Show visible XP notification
     if reason:
+        st.success(f"🌟 **+{amount} XP** earned: {reason}")
         st.toast(f"+{amount} XP: {reason}", icon="⭐")
+    
     save_persisted_state()
-    st.rerun()  # Force immediate UI update
+    
+    if leveled_up:
+        st.balloons()
+        st.success(f"🎉 **Level Up!** You're now level {new_level}!")
+    
+    if not skip_rerun:
+        st.rerun()
 
 _genai_import_error: Optional[str] = None
 try:
@@ -385,70 +419,125 @@ ADAPTIVE TEACHING STYLE (INJECTED DYNAMICALLY):
 {quiz_difficulty_instruction}
 
 YOUR TEACHING FLOW:
-1. For each learning point:
-   - First, provide 2-3 sentences of essential context/information about that learning point
-   - Then ask ONE [MINI-Q] question that helps them think deeper about what you just taught
-   - This is NOT a quiz - you're helping them explore and understand the concept
-   
-2. Build on their answers with follow-up context or gentle corrections
-3. After covering ALL 4 learning points this way, present a final synthesis [QUIZ] question
-4. When user gets quiz right, the subtopic is mastered
+
+**FIRST TIME teaching a learning point:**
+1. Provide 2-3 sentences of essential context/information about that learning point
+2. Then ask ONE NEW [MINI-Q] question that helps them think deeper about what you just taught
+3. This is NOT a quiz - you're helping them explore and understand the concept
+
+**WHEN STUDENT ANSWERS your question:**
+1. ALWAYS acknowledge their response first ("Good thinking about...", "I see you're considering...", "That's a thoughtful connection...")
+2. Build on their answer:
+   - If correct/insightful: Add 1-2 sentences that expand on their idea, then move to the next learning point
+   - If partially correct: Affirm what's right, then gently add missing context
+   - If incorrect: "Interesting thought, but let me add some context..." then correct gently
+3. Then:
+   - If they've grasped this learning point: Move to the NEXT learning point (teach new content + ask a NEW question)
+   - If they need more depth: Ask ONE DIFFERENT follow-up question on the same learning point (never repeat the exact same question)
+4. CRITICAL: NEVER repeat a question you just asked. Always ask a NEW question or move to a NEW learning point
+5. NEVER say "I'm waiting for your answer" - always engage with what they just said
+
+**PROGRESSION:**
+- Each learning point takes 2-4 exchanges (teach → ask → respond to answer → maybe follow-up)
+- After covering ALL 4 learning points, present a final synthesis [QUIZ] question
+- When user gets quiz right, the subtopic is mastered
 
 CRITICAL RULES:
-- ALWAYS teach the core information first (2-3 sentences) before asking
-- Questions should help them think about implications, connections, or reasons - NOT test if they memorized
-- Example: "The Han Dynasty extended trade routes west. Why might controlling these routes have been strategically important for them?"
+- Questions should help them think about implications, connections, or reasons - NOT test memorization
 - ONE question at a time, never multiple questions in one response
+- NEVER ask the same question twice - if you need a follow-up, ask a DIFFERENT question about the same concept
+- If a student responds, ENGAGE with that response - don't ignore it
 - Stay laser-focused on the 4 learning points for the current subtopic
-- Each learning point should take 2-3 exchanges: teach → ask → respond to answer
 - Use [MINI-Q] tag before every question (10 XP per thoughtful answer)
 - Use [QUIZ] tag for the final synthesis question (25 XP)
 - After [QUIZ] is answered correctly, ask which subtopic to explore next
 
-RESPONSE FORMAT:
-[2-3 sentences teaching the learning point]
-
-[MINI-Q] One thoughtful question about what you just taught
-
-Tone: patient, encouraging, guide-like. Teach first, then help them think deeper.
+Tone: patient, encouraging, guide-like. Teach first, then help them think deeper. ALWAYS engage with student responses. NEVER repeat questions.
 ''',
 
-    "Narrative": '''You are a narrative-style history tutor who teaches through immersive storytelling and historical role-play.
+    "Narrative": '''You are a narrative-style history tutor who teaches through immersive EPISODIC storytelling.
 
-CURRENT SUBTOPIC STRUCTURE:
-You must cover specific learning points for each subtopic. The current subtopic has 4 key learning points you need to address through storytelling.
+CRITICAL STRUCTURE: You teach in EPISODES, not free-flowing story. Each subtopic = exactly 4 EPISODES (one per learning point).
 
-ADAPTIVE TEACHING STYLE (INJECTED DYNAMICALLY):
+CURRENT SUBTOPIC has these 4 learning points, each is ONE EPISODE:
+{episode_list}
+
+HOW TO TEACH EACH EPISODE:
+
+**OPENING (3-4 vivid sentences)**
+Place the learner IN the historical moment as a character or observer. Use sensory details: sights, sounds, smells, emotions. Make them feel the motivations and trade-offs of the time. End with a hook that leads naturally to your question.
+
+**ENGAGEMENT QUESTION [MINI-Q]**
+Choose ONE question type based on the content:
+
+A) PREDICTION: "Based on what you've experienced, what do you think happens next?"
+   - Good for: outcomes, consequences, historical turns
+   
+B) DECISION: "You must choose: A) [option] B) [option] C) [option]. What would you do and why?"
+   - Good for: trade routes, political choices, strategic decisions
+   
+C) INTERPRETATION: "In your own words, why would [person/group] make this choice?"
+   - Good for: motivations, cultural factors, economic reasoning
+
+Use [MINI-Q] tag. Award 5-10 XP based on thoughtfulness.
+
+**WHEN STUDENT ANSWERS:**
+1. ACKNOWLEDGE their choice/prediction first ("You chose the mountain route because...")
+2. REVEAL what actually happened historically (2-3 sentences)
+3. EXPLAIN why it matters - connect to the learning point
+4. VALIDATE good reasoning even if historically "wrong"
+
+**QUICK KNOWLEDGE CHECK (embedded naturally):**
+One quick factual question, conversationally woven in:
+- "Just to anchor this moment: roughly when did this happen?"
+- "Before we move on: which empire controlled this region?"
+- Keep it natural, not quiz-style
+
+**MASTERY SIGNAL:**
+If the learner has shown understanding (explained in own words, made reasonable choice with justification, or answered 2+ questions correctly), emit:
+[MASTERED episode_X] (where X is 1, 2, 3, or 4)
+
+Then say: "Ready for Episode [X+1]?" or if episode 4: "Ready for the chapter recap?"
+
+---
+
+**CHAPTER RECAP (after all 4 episodes):**
+"Before we close this chapter on [subtopic], let's reflect on your journey."
+
+Present 2-3 STORY-THEMED reflection questions (still narrative, not quiz):
+- "You've walked Zhang Qian's path. If you were advising the Han Emperor, what would you report as the most important discovery?"
+- "Looking back at the choices you made, which route would you actually take and why?"
+- "What surprised you most about life on the Silk Road?"
+
 {quiz_difficulty_instruction}
 
-YOUR TEACHING FLOW:
-1. Frame each learning point as a short immersive scene (3-4 sentences)
-2. Ask ONE [MINI-Q] question that connects the scene to the learning point
-3. After student responds, reveal what happened and explain significance
-4. Move to next learning point with a new scene
-5. After covering ALL 4 learning points, PAUSE THE NARRATIVE and present a straightforward [QUIZ]
-6. Quiz should test factual understanding of the 4 concepts covered
-7. When user gets quiz right, the subtopic is mastered
+After good recap answers, emit: [SUBTOPIC_COMPLETE]
+Then offer: "Would you like to explore the next subtopic, or switch to Direct tutor for a mastery quiz?"
 
-CRITICAL RULES:
-- Cover all 4 learning points in order, one scene per point
-- Keep scenes concise (3-4 sentences max)
-- ONE question per response, never multiple
-- Stay focused on the learning points, no tangents
-- After 4th learning point, STOP story and give quiz
-- Use [MINI-Q] tag before every question (5-10 XP depending on depth)
-- Use [QUIZ] tag for factual assessment question (difficulty: {quiz_difficulty}, 25 XP)
-- After [QUIZ] is answered correctly, ask which subtopic to explore next
+---
 
-RESPONSE FORMAT FOR SCENES:
-[Immersive scene describing the learning point]
-[MINI-Q] One question about what the student sees/feels/predicts
+**QUESTION FLOW BY EPISODE:**
+- Episode 1: Usually PREDICTION (what will the envoy discover?)
+- Episode 2: Usually DECISION (which route/choice would you make?)
+- Episode 3: Usually INTERPRETATION (why would they do this?)
+- Episode 4: Usually SYNTHESIS (how does it all connect?)
 
-RESPONSE FORMAT FOR QUIZ:
-"We've experienced the story of [topic]. Let's test your understanding."
-[QUIZ] [Straightforward factual question about covered concepts]
+**MASTERY CRITERIA:**
+Mark [MASTERED episode_X] when learner:
+- Explains the concept in their own words, OR
+- Chooses historically reasonable option AND justifies it, OR
+- Shows understanding across 2+ exchanges
 
-Tone: cinematic, engaging, focused for stories. Clear and direct for quizzes.
+**CRITICAL RULES:**
+- ONE episode = ONE learning point = ONE sidebar bullet
+- NEVER use mechanical labels like "Phase 1", "Phase 2", "Setup", "Engagement" in your responses to the student
+- Keep immersion: you're a guide IN the story, not a lecturer about it
+- ALWAYS acknowledge student's choice/answer before revealing history
+- Never skip the knowledge check - it anchors learning
+- After 4 episodes + recap = subtopic mastered
+- Flow naturally from one part to the next without announcing structure
+
+**TONE:** Cinematic for story. Warm for checks. You're a guide walking beside them, not a quiz master testing them. Keep the structure invisible - the student should just experience an engaging story with questions woven in.
 ''',
 
     "Direct": '''You are a direct, structured history tutor who delivers curriculum-aligned lessons clearly and efficiently.
@@ -465,10 +554,15 @@ YOUR TEACHING FLOW:
 3. When user says continue/next, present learning points 3-4 together in another substantial paragraph (5-7 sentences)
 4. End with: "That covers the key concepts! Click 'Continue' to take the quiz, or ask questions if needed."
 5. When user says continue/next/quiz, present exactly 3 [QUIZ] questions one at a time
-6. Quiz difficulty should match: {quiz_difficulty}
+6. Quiz difficulty should match the injected difficulty setting
 7. User must get 3/3 correct to master the subtopic
 8. If they miss any, re-teach that specific point briefly and quiz again
 9. When user gets 3/3, congratulate and ask which subtopic to explore next
+
+**WHEN STUDENT ASKS QUESTIONS:**
+- Answer their question directly and clearly in 2-3 sentences
+- Connect answer back to the learning points
+- Then prompt them to continue: "Does that help? Click 'Continue' when ready."
 
 CRITICAL RULES:
 - Teach in 2 substantial chunks (points 1-2, then points 3-4)
@@ -482,13 +576,13 @@ CRITICAL RULES:
 
 QUIZ FORMAT:
 "Let's test your understanding with a quiz on [subtopic name]"
-[QUIZ] Question 1: [question about points 1-2 at {quiz_difficulty} difficulty]
+[QUIZ] Question 1: [question about points 1-2 at appropriate difficulty]
 (wait for answer and feedback)
-[QUIZ] Question 2: [question about points 3-4 at {quiz_difficulty} difficulty]
+[QUIZ] Question 2: [question about points 3-4 at appropriate difficulty]
 (wait for answer and feedback)
-[QUIZ] Question 3: [synthesis question across all points at {quiz_difficulty} difficulty]
+[QUIZ] Question 3: [synthesis question across all points at appropriate difficulty]
 
-Tone: friendly, clear, efficient. Give substantial explanations before moving on.
+Tone: friendly, clear, efficient. Give substantial explanations before moving on. Engage with student questions.
 '''
 }
 
@@ -500,10 +594,10 @@ INTRO_PROMPTS = {
         "Ready to begin?"
     ),
     "Narrative": (
-        "Welcome! I'll teach you about the Silk Road through immersive stories and scenes. "
-        "For each subtopic, I have 4 key learning points to cover through storytelling. "
-        "You'll experience history firsthand through these narratives. Let's start with the first subtopic: Origins & Expansion. "
-        "Ready to begin your journey?"
+        "Welcome, traveler! I'll guide you through the Silk Road as an immersive journey told in episodes. "
+        "Each subtopic is a chapter with 4 episodes - and in each episode, you'll step INTO history, make choices, and discover what really happened. "
+        "We're starting with Origins & Expansion. Episode 1 begins with a fateful day in the Han Emperor's palace... "
+        "Ready to begin Episode 1?"
     ),
     "Direct": (
         "Welcome! I'll teach you about the Silk Road in a clear, structured way. "
@@ -526,68 +620,96 @@ def get_concept(key: Optional[str] = None):
     return LEARNING_CONCEPTS[0]
 
 
+def get_current_learning_points() -> List[str]:
+    """Get the learning points for the current subtopic."""
+    current_subtopic_key = st.session_state.get("current_subtopic")
+    if not current_subtopic_key:
+        return []
+    
+    for concept in LEARNING_CONCEPTS:
+        for subtopic in concept.get("subtopics", []):
+            if subtopic["key"] == current_subtopic_key:
+                return subtopic.get("learning_points", [])
+    return []
+
+
 def update_learning_point_progress():
     """Update learning point progress based on recent conversation."""
     current_subtopic = st.session_state.get("current_subtopic")
     if not current_subtopic:
         return
     
-    # Get the learning points for current subtopic
-    learning_points = []
-    for concept in LEARNING_CONCEPTS:
-        for subtopic in concept.get("subtopics", []):
-            if subtopic["key"] == current_subtopic:
-                learning_points = subtopic.get("learning_points", [])
-                break
-    
+    learning_points = get_current_learning_points()
     if not learning_points:
         return
     
-    # Initialize if doesn't exist
     if "learning_point_progress" not in st.session_state:
         st.session_state.learning_point_progress = {}
     if current_subtopic not in st.session_state.learning_point_progress:
         st.session_state.learning_point_progress[current_subtopic] = {}
     
-    # Get recent conversation text
     recent_messages = st.session_state.messages[-6:] if len(st.session_state.messages) >= 6 else st.session_state.messages
     conversation_text = " ".join([
         msg.content if isinstance(msg, Message) else (msg.get("content", "") if isinstance(msg, dict) else "")
         for msg in recent_messages if msg
     ]).lower()
     
-    # Check which learning points have been discussed
     lp_progress = st.session_state.learning_point_progress[current_subtopic]
     
     for idx, point in enumerate(learning_points):
         lp_key = f"lp_{idx}"
         current_status = lp_progress.get(lp_key, "locked")
         
-        # Extract key terms from learning point
         point_lower = point.lower()
         key_terms = []
         
-        # Get distinctive words (longer than 4 chars, not common words)
         words = point_lower.split()
         for word in words:
             clean_word = word.strip('.,()[]{}":;!?')
             if len(clean_word) > 4 and clean_word not in ['about', 'their', 'which', 'where', 'these', 'those', 'through', 'between']:
                 key_terms.append(clean_word)
         
-        # Check if this learning point has been discussed
         matches = sum(1 for term in key_terms if term in conversation_text)
         
-        if matches >= 2 and current_status != "completed":  # At least 2 key terms mentioned
+        if matches >= 2 and current_status != "completed":
             if current_status == "locked":
                 lp_progress[lp_key] = "active"
             elif current_status == "active":
-                # Mark as completed if discussed extensively
                 recent_text = " ".join([
                     str(m.content) if isinstance(m, Message) else str(m.get("content", "")) if isinstance(m, dict) else ""
                     for m in recent_messages if m
                 ])
                 if matches >= 3 or "[MINI-Q]" in recent_text:
                     lp_progress[lp_key] = "completed"
+
+
+def mark_episode_mastered(episode_num: int):
+    """Mark a specific episode (learning point) as mastered for Narrative."""
+    current_subtopic = st.session_state.get("current_subtopic")
+    if not current_subtopic:
+        return
+    
+    if "learning_point_progress" not in st.session_state:
+        st.session_state.learning_point_progress = {}
+    if current_subtopic not in st.session_state.learning_point_progress:
+        st.session_state.learning_point_progress[current_subtopic] = {
+            "lp_0": "locked", "lp_1": "locked", "lp_2": "locked", "lp_3": "locked"
+        }
+    
+    lp_key = f"lp_{episode_num - 1}"  # episode_1 = lp_0
+    st.session_state.learning_point_progress[current_subtopic][lp_key] = "completed"
+    
+    # Activate next episode if available
+    if episode_num < 4:
+        next_lp_key = f"lp_{episode_num}"
+        if st.session_state.learning_point_progress[current_subtopic].get(next_lp_key, "locked") == "locked":
+            st.session_state.learning_point_progress[current_subtopic][next_lp_key] = "active"
+    
+    # Update narrative episode tracker
+    st.session_state.narrative_episode = episode_num + 1 if episode_num < 4 else 4
+    st.session_state.narrative_episode_phase = "setup"
+    
+    save_persisted_state()
 
 
 def mark_subtopic_mastered(key: str):
@@ -597,19 +719,19 @@ def mark_subtopic_mastered(key: str):
     if not progress["mastered"]:
         progress["mastered"] = True
         
-        # Mark all learning points as completed
         if key in st.session_state.learning_point_progress:
             for lp_key in st.session_state.learning_point_progress[key]:
                 st.session_state.learning_point_progress[key][lp_key] = "completed"
         
-        # Unlock next subtopic
         subtopics = LEARNING_CONCEPTS[0]["subtopics"]
         index = next((idx for idx, s in enumerate(subtopics) if s["key"] == key), None)
         if index is not None and index + 1 < len(subtopics):
             next_key = subtopics[index + 1]["key"]
             unlock_subtopic(next_key)
-            # Auto-switch to next subtopic
             st.session_state.current_subtopic = next_key
+            # Reset narrative episode for new subtopic
+            st.session_state.narrative_episode = 1
+            st.session_state.narrative_episode_phase = "setup"
             st.toast("New subtopic unlocked!", icon="🚀")
         save_persisted_state()
 
@@ -627,7 +749,7 @@ def get_current_subtopic_status():
     lp_progress = st.session_state.learning_point_progress.get(current_subtopic, {})
     completed_count = sum(1 for status in lp_progress.values() if status == "completed")
     
-    if completed_count >= 3:  # 3 out of 4 learning points completed
+    if completed_count >= 3:
         return "nearly_complete"
     elif completed_count >= 1:
         return "in_progress"
@@ -636,57 +758,60 @@ def get_current_subtopic_status():
 
 
 def select_bandit_action(action_type: str, context: Dict) -> str:
-    """
-    Epsilon-greedy contextual bandit selection.
-    
-    action_type: "hint_policy", "question_depth", or "quiz_difficulty"
-    context: relevant state (user_level, subtopic_progress, time_of_day, etc.)
-    """
+    """Epsilon-greedy contextual bandit selection with user feedback integration."""
     import random
     
-    epsilon = 0.2  # 20% exploration, 80% exploitation
+    epsilon = 0.15  # Reduced epsilon to favor learned preferences
     
     bandit_stats = st.session_state.get("bandit_stats", {})
     
     if action_type == "hint_policy":
         actions = ["NO_AUTOMATIC_HINTS", "LIGHT_HINTS", "FULL_HINTS"]
         rewards_key = "hint_policy_rewards"
+        user_feedback_key = "user_feedback_rewards"
     elif action_type == "question_depth":
         actions = ["SHALLOW_CHECK", "DEEP_PROBE"]
         rewards_key = "depth_rewards"
+        user_feedback_key = None
     elif action_type == "quiz_difficulty":
         actions = ["EASY", "MEDIUM", "HARD"]
         rewards_key = "difficulty_rewards"
+        user_feedback_key = None
     else:
-        return st.session_state.get(action_type, actions[0])
+        return st.session_state.get(action_type, "MEDIUM")
     
-    # Epsilon-greedy: explore with probability epsilon
     if random.random() < epsilon:
-        # Exploration: random action
         selected = random.choice(actions)
     else:
-        # Exploitation: choose best action based on average reward
         avg_rewards = {}
         for action in actions:
-            rewards = bandit_stats.get(rewards_key, {}).get(action, [])
-            avg_rewards[action] = sum(rewards) / len(rewards) if rewards else 0.5  # Default to neutral
+            # Combine automatic rewards with user feedback (weighted)
+            auto_rewards = bandit_stats.get(rewards_key, {}).get(action, [])
+            auto_avg = sum(auto_rewards) / len(auto_rewards) if auto_rewards else 0.5
+            
+            # User feedback is weighted more heavily (2x)
+            if user_feedback_key:
+                user_rewards = bandit_stats.get(user_feedback_key, {}).get(action, [])
+                user_avg = sum(user_rewards) / len(user_rewards) if user_rewards else 0.5
+                # Combine: 40% auto, 60% user feedback
+                avg_rewards[action] = 0.4 * auto_avg + 0.6 * user_avg
+            else:
+                avg_rewards[action] = auto_avg
         
-        # Select action with highest average reward
         selected = max(avg_rewards, key=avg_rewards.get)
     
     return selected
 
 
 def record_bandit_reward(action_type: str, action: str, reward: float):
-    """
-    Record reward for a bandit action.
-    
-    reward: 0.0 to 1.0 (0 = worst, 1 = best)
-    """
+    """Record reward for a bandit action."""
     bandit_stats = st.session_state.get("bandit_stats", {
         "hint_policy_rewards": {"NO_AUTOMATIC_HINTS": [], "LIGHT_HINTS": [], "FULL_HINTS": []},
         "depth_rewards": {"SHALLOW_CHECK": [], "DEEP_PROBE": []},
         "difficulty_rewards": {"EASY": [], "MEDIUM": [], "HARD": []},
+        "user_feedback_rewards": {"NO_AUTOMATIC_HINTS": [], "LIGHT_HINTS": [], "FULL_HINTS": []},
+        "personality_feedback": {"Socratic": [], "Narrative": [], "Direct": []},
+        "response_quality_scores": [],
     })
     
     if action_type == "hint_policy":
@@ -695,6 +820,10 @@ def record_bandit_reward(action_type: str, action: str, reward: float):
         rewards_key = "depth_rewards"
     elif action_type == "quiz_difficulty":
         rewards_key = "difficulty_rewards"
+    elif action_type == "user_feedback":
+        rewards_key = "user_feedback_rewards"
+    elif action_type == "personality":
+        rewards_key = "personality_feedback"
     else:
         return
     
@@ -705,29 +834,147 @@ def record_bandit_reward(action_type: str, action: str, reward: float):
     
     bandit_stats[rewards_key][action].append(reward)
     
-    # Keep only last 20 rewards to adapt to changing user behavior
-    if len(bandit_stats[rewards_key][action]) > 20:
-        bandit_stats[rewards_key][action] = bandit_stats[rewards_key][action][-20:]
+    # Keep last 30 rewards for user feedback (more history for stability)
+    max_history = 30 if action_type in ["user_feedback", "personality"] else 20
+    if len(bandit_stats[rewards_key][action]) > max_history:
+        bandit_stats[rewards_key][action] = bandit_stats[rewards_key][action][-max_history:]
     
     st.session_state.bandit_stats = bandit_stats
     save_persisted_state()
 
 
+def record_user_feedback(message_idx: int, feedback: str):
+    """
+    Record user thumbs up/down feedback and update bandit rewards.
+    
+    Args:
+        message_idx: Index of the message being rated
+        feedback: "up" for thumbs up, "down" for thumbs down
+    """
+    # Store feedback in session state
+    if "message_feedback" not in st.session_state:
+        st.session_state.message_feedback = {}
+    
+    st.session_state.message_feedback[str(message_idx)] = feedback
+    
+    # Get the message metadata to understand context
+    if message_idx < len(st.session_state.messages):
+        msg = st.session_state.messages[message_idx]
+        metadata = msg.metadata if isinstance(msg, Message) else msg.get("metadata", {})
+        metadata = metadata or {}
+        
+        # Convert feedback to reward value
+        reward = 1.0 if feedback == "up" else 0.0
+        
+        # Get current settings that were active for this message
+        hint_policy = metadata.get("hint_policy") or st.session_state.get("current_hint_policy") or st.session_state.get("hint_policy", "LIGHT_HINTS")
+        personality = st.session_state.get("personality", "Socratic")
+        
+        # Record rewards for the bandit system
+        record_bandit_reward("user_feedback", hint_policy, reward)
+        record_bandit_reward("personality", personality, reward)
+        
+        # Track overall response quality
+        bandit_stats = st.session_state.get("bandit_stats", {})
+        if "response_quality_scores" not in bandit_stats:
+            bandit_stats["response_quality_scores"] = []
+        bandit_stats["response_quality_scores"].append({
+            "feedback": feedback,
+            "personality": personality,
+            "hint_policy": hint_policy,
+            "timestamp": time.time(),
+        })
+        # Keep last 50 quality scores
+        if len(bandit_stats["response_quality_scores"]) > 50:
+            bandit_stats["response_quality_scores"] = bandit_stats["response_quality_scores"][-50:]
+        st.session_state.bandit_stats = bandit_stats
+    
+    save_persisted_state()
+    
+    # Show subtle acknowledgment
+    if feedback == "up":
+        st.toast("Thanks for the feedback!", icon="👍")
+    else:
+        st.toast("Thanks - we'll try to improve!", icon="👎")
+
+
+def get_feedback_stats() -> Dict:
+    """Get aggregated feedback statistics for display."""
+    bandit_stats = st.session_state.get("bandit_stats", {})
+    quality_scores = bandit_stats.get("response_quality_scores", [])
+    
+    if not quality_scores:
+        return {"total": 0, "positive": 0, "negative": 0, "rate": 0}
+    
+    total = len(quality_scores)
+    positive = sum(1 for s in quality_scores if s.get("feedback") == "up")
+    negative = total - positive
+    rate = (positive / total * 100) if total > 0 else 0
+    
+    return {
+        "total": total,
+        "positive": positive,
+        "negative": negative,
+        "rate": round(rate, 1),
+    }
+
+
+def calculate_hint_effectiveness_reward(
+    hint_policy: str,
+    hint_was_given: bool,
+    answer_correct: bool,
+    response_time: float,
+    attempt_count: int
+) -> float:
+    """
+    Calculate reward for hint policy effectiveness.
+    """
+    base_reward = 0.0
+    
+    if answer_correct:
+        base_reward = 0.6
+        
+        if response_time < 60:
+            base_reward += 0.2
+        elif response_time < 120:
+            base_reward += 0.1
+        
+        if attempt_count == 1:
+            base_reward += 0.2
+        elif attempt_count == 2:
+            base_reward += 0.1
+        
+        if hint_policy == "NO_AUTOMATIC_HINTS" and hint_was_given:
+            base_reward -= 0.1
+        
+        if hint_policy == "LIGHT_HINTS" and answer_correct and not hint_was_given:
+            base_reward += 0.1
+            
+    else:
+        base_reward = 0.2
+        
+        if hint_was_given:
+            if hint_policy == "FULL_HINTS":
+                base_reward -= 0.1
+            elif hint_policy == "LIGHT_HINTS":
+                base_reward -= 0.05
+        else:
+            if hint_policy == "NO_AUTOMATIC_HINTS":
+                base_reward -= 0.1
+    
+    return max(0.0, min(1.0, base_reward))
+
+
 def check_learning_point_understanding():
-    """
-    Every ~3 turns for Socratic/Narrative, check if learner has understood current learning point.
-    Updates visualization accordingly.
-    """
+    """Check if learner has understood current learning point."""
     current_subtopic = st.session_state.get("current_subtopic")
     if not current_subtopic:
         return False
     
-    # Get recent conversation
     recent_messages = st.session_state.messages[-6:] if len(st.session_state.messages) >= 6 else st.session_state.messages
-    if len(recent_messages) < 4:  # Need at least 2 exchanges
+    if len(recent_messages) < 4:
         return False
     
-    # Find which learning point we're currently on
     lp_progress = st.session_state.learning_point_progress.get(current_subtopic, {})
     current_lp_idx = None
     for idx in range(4):
@@ -740,7 +987,6 @@ def check_learning_point_understanding():
     if current_lp_idx is None:
         return False
     
-    # Simple heuristic: if user has given 2+ substantive answers (6+ words each) since LP became active
     substantive_answers = 0
     for msg in recent_messages[-4:]:
         if isinstance(msg, Message) and msg.role == "user":
@@ -748,11 +994,9 @@ def check_learning_point_understanding():
                 substantive_answers += 1
     
     if substantive_answers >= 2:
-        # Mark as completed
         lp_key = f"lp_{current_lp_idx}"
         lp_progress[lp_key] = "completed"
         
-        # Activate next learning point if available
         if current_lp_idx + 1 < 4:
             next_lp_key = f"lp_{current_lp_idx + 1}"
             if lp_progress.get(next_lp_key, "locked") == "locked":
@@ -799,64 +1043,78 @@ def refresh_topic_periodically():
         st.session_state.current_topic = derive_topic_label(recent_user, st.session_state.current_concept)
         st.session_state.topic_refresh_counter = 0
 
-def build_tutor_context(personality: str, pdf_ref=None) -> str:
-    # Get base personality prompt
+
+def build_tutor_context(personality: str, pdf_ref=None, continuation_context: str = None) -> str:
+    """Build context for tutor, with optional continuation context after XP award."""
     base_prompt = get_personality_prompt(personality)
     
-    # Build adaptive instructions based on bandit selections
     quiz_difficulty = st.session_state.get("quiz_difficulty", "MEDIUM")
     
     if quiz_difficulty == "EASY":
-        quiz_diff_instruction = "QUIZ DIFFICULTY: EASY - Ask straightforward recall questions with obvious answers. Example: 'What dynasty sent Zhang Qian to Central Asia?'"
+        quiz_diff_instruction = "QUIZ DIFFICULTY: EASY - Ask straightforward recall questions with obvious answers."
     elif quiz_difficulty == "HARD":
-        quiz_diff_instruction = "QUIZ DIFFICULTY: HARD - Ask synthesis questions requiring deep analysis and connections. Example: 'How did the geographic challenges of the Silk Road influence the types of goods that became most valuable?'"
-    else:  # MEDIUM
-        quiz_diff_instruction = "QUIZ DIFFICULTY: MEDIUM - Ask questions requiring understanding and application. Example: 'Why was controlling the Silk Road routes strategically important for the Han Dynasty?'"
+        quiz_diff_instruction = "QUIZ DIFFICULTY: HARD - Ask synthesis questions requiring deep analysis and connections."
+    else:
+        quiz_diff_instruction = "QUIZ DIFFICULTY: MEDIUM - Ask questions requiring understanding and application."
     
-    # For Socratic only: question depth and hint policy
     if personality == "Socratic":
         question_depth = st.session_state.get("question_depth", "DEEP_PROBE")
         hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
         
         if question_depth == "DEEP_PROBE":
-            depth_instruction = "QUESTION DEPTH: DEEP - Ask at least 2 follow-up why/how questions about the same concept before moving to the next learning point. Probe deeper into reasoning."
-        else:  # SHALLOW_CHECK
-            depth_instruction = "QUESTION DEPTH: SHALLOW - Ask one quick understanding check per learning point, then advance if correct. Keep it efficient."
+            depth_instruction = "QUESTION DEPTH: DEEP - Ask at least 2 follow-up why/how questions about the same concept before moving to the next learning point."
+        else:
+            depth_instruction = "QUESTION DEPTH: SHALLOW - Ask one quick understanding check per learning point, then advance if correct."
         
         if hint_policy == "NO_AUTOMATIC_HINTS":
             hint_instruction = "HINT POLICY: Only provide hints if student explicitly asks 'can I get a hint?' or similar."
         elif hint_policy == "FULL_HINTS":
             hint_instruction = "HINT POLICY: After one wrong or weak answer, provide a detailed scaffolded hint pointing toward the answer."
-        else:  # LIGHT_HINTS
+        else:
             hint_instruction = "HINT POLICY: After one wrong answer, give a small nudge ('Think about...') without giving away the answer."
         
-        # Inject into template
         context = base_prompt.format(
             question_depth_instruction=depth_instruction,
             hint_policy_instruction=hint_instruction,
             quiz_difficulty_instruction=quiz_diff_instruction
         )
+    elif personality == "Narrative":
+        learning_points = get_current_learning_points()
+        if learning_points:
+            episode_list = "\n".join([f"Episode {i+1}: {point}" for i, point in enumerate(learning_points)])
+        else:
+            episode_list = "Episode 1-4: (Learning points will be provided)"
+        
+        context = base_prompt.format(
+            episode_list=episode_list,
+            quiz_difficulty_instruction=quiz_diff_instruction
+        )
+        
+        current_episode = st.session_state.get("narrative_episode", 1)
+        current_phase = st.session_state.get("narrative_episode_phase", "setup")
+        context += f"\n\nCURRENT STATE: Episode {current_episode}"
+        context += f"\nRemember: You are on Episode {current_episode} of 4. Stay focused on this episode's learning point."
     else:
-        # For Narrative and Direct, just inject quiz difficulty
-        context = base_prompt.format(quiz_difficulty_instruction=quiz_diff_instruction)
+        context = base_prompt.format(
+            quiz_difficulty_instruction=quiz_diff_instruction
+        )
     
     if personality == "Direct":
         context += "\n\nIMPORTANT: Only use [QUIZ] tags for the 3-question quiz at the end. Do not use [MINI-Q] tags."
+    elif personality == "Narrative":
+        context += "\n\nIMPORTANT: Use [MINI-Q] for episode engagement questions. Emit [MASTERED episode_X] when learner demonstrates understanding."
     else:
-        context += "\n\nIMPORTANT: Use [MINI-Q] and [QUIZ] tags. Keep responses concise."
+        context += "\n\nIMPORTANT: Use [MINI-Q] and [QUIZ] tags. Keep responses concise. NEVER repeat the exact same question twice."
     
     if personality == "Socratic":
         context += "\n- Award +10 XP when the student shows reasoning or cites evidence."
     elif personality == "Narrative":
-        context += (
-            "\n- Award +10 XP for historically accurate or empathetic responses and +5 XP for creative engagement."
-        )
+        context += "\n- Award +10 XP for historically accurate or empathetic responses and +5 XP for creative engagement."
     else:
         context += "\n- Award 25 XP for each correct [QUIZ] answer. Students must get 3/3 to master the subtopic."
     
-    # Add current subtopic learning points
     current_subtopic_key = st.session_state.get("current_subtopic")
-    if current_subtopic_key:
+    if current_subtopic_key and personality != "Narrative":
         for concept in LEARNING_CONCEPTS:
             for subtopic in concept.get("subtopics", []):
                 if subtopic["key"] == current_subtopic_key:
@@ -870,18 +1128,33 @@ def build_tutor_context(personality: str, pdf_ref=None) -> str:
     
     if pdf_ref:
         context += (
-            "\n\nCURRICULUM INTEGRATION: Use the uploaded PDF only as background knowledge. Summarise or paraphrase ideas in fresh language so the learner gets a self-contained explanation. Never quote the PDF verbatim. When a fact originated from the PDF, mention the page unobtrusively in parentheses (e.g., '(p. 4)') after your own explanation. The learner should not need to open the PDF to follow along."
+            "\n\nCURRICULUM INTEGRATION: Use the uploaded PDF only as background knowledge. "
+            "Summarise or paraphrase ideas in fresh language. Never quote the PDF verbatim."
         )
+    
     active_concept = get_concept()
     if active_concept:
         context += (
             f"\n\nACTIVE CONCEPT: Focus on '{active_concept['title']}'. "
-            f"Describe routes or decision points learners can choose between."
-            f" Starter idea: {active_concept['description']}"
+            f"Starter idea: {active_concept['description']}"
         )
+    
+    # Add last question tracking to prevent repeats
+    last_question = st.session_state.get("last_question_asked")
+    if last_question and personality == "Socratic":
+        context += f"\n\nLAST QUESTION ASKED: \"{last_question}\"\nIMPORTANT: Do NOT ask this exact question again. If you need a follow-up, ask a DIFFERENT question about the same concept."
+    
+    if continuation_context:
+        context += f"\n\n{continuation_context}"
+    
     return context
 
-def chat_with_tutor(model, personality: str, user_message: str, pdf_ref=None) -> str:
+
+def chat_with_tutor(model, personality: str, user_message: str, pdf_ref=None, continuation_prompt: str = None) -> str:
+    """Chat with the tutor model with defensive error handling."""
+    if model is None:
+        return "(Error: AI model not initialized. Please check your GEMINI_API_KEY configuration and try again.)"
+    
     try:
         pdf_id = getattr(pdf_ref, "name", None) or getattr(pdf_ref, "uri", None)
         chat = st.session_state.get("chat_session")
@@ -892,52 +1165,83 @@ def chat_with_tutor(model, personality: str, user_message: str, pdf_ref=None) ->
         )
 
         if needs_reset:
-            system_context = build_tutor_context(personality, pdf_ref)
+            system_context = build_tutor_context(personality, pdf_ref, continuation_prompt)
             chat_history = [{"role": "user", "parts": [system_context]}]
             chat = model.start_chat(history=chat_history)
             st.session_state.chat_session = chat
             st.session_state.chat_session_personality = personality
             st.session_state.chat_session_pdf_id = pdf_id
 
-        if pdf_ref:
-            response = chat.send_message([user_message, pdf_ref])
-        else:
-            response = chat.send_message(user_message)
+        message_to_send = user_message
+        if continuation_prompt:
+            message_to_send = f"{user_message}\n\n[SYSTEM NOTE: {continuation_prompt}]"
 
-        return getattr(response, "text", "") or ""
+        if pdf_ref:
+            response = chat.send_message([message_to_send, pdf_ref])
+        else:
+            response = chat.send_message(message_to_send)
+
+        reply_text = getattr(response, "text", "") or ""
+        
+        if not reply_text or reply_text.strip() == "":
+            st.error("Tutor generated an empty response. Please try again.")
+            return "I'm having trouble generating a response right now. Could you please rephrase your question or try again?"
+        
+        return reply_text
     except Exception as e:
         st.session_state.chat_session = None
-        return f"(Error: {e})"
+        st.error(f"Chat error: {e}")
+        return f"I encountered an error while processing your request: {e}. Please try again."
+
 
 def parse_tutor_response(response: str):
+    """Parse tutor response for tags and signals."""
     question_type = None
+    mastered_episode = None
+    subtopic_complete = False
     
-    # Check for explicit tags first
+    if "[MASTERED episode_" in response:
+        import re
+        match = re.search(r'\[MASTERED episode_(\d+)\]', response)
+        if match:
+            mastered_episode = int(match.group(1))
+            response = re.sub(r'\[MASTERED episode_\d+\]', '', response).strip()
+    
+    if "[SUBTOPIC_COMPLETE]" in response:
+        subtopic_complete = True
+        response = response.replace("[SUBTOPIC_COMPLETE]", "").strip()
+    
     if "[MINI-Q]" in response:
         question_type = "mini"
         response = response.replace("[MINI-Q]", "**Mini-Question:**")
+        
+        # Track the question to avoid repeats
+        question_match = response.split("**Mini-Question:**")[-1].strip()
+        if "?" in question_match:
+            question_text = question_match.split("?")[0] + "?"
+            st.session_state.last_question_asked = question_text.strip()
     elif "[QUIZ]" in response:
         question_type = "quiz"
         response = response.replace("[QUIZ]", "**Quiz:**")
-    # If no tags but mentions "+10 XP" or similar, treat as mini question
     elif ("+10 XP" in response or "+10XP" in response or "+ 10 XP" in response):
         question_type = "mini"
-        # Add the tag indicator
-        if "?" in response:  # Contains a question
+        if "?" in response:
             response = "**Mini-Question:** " + response
     elif ("+5 XP" in response or "+5XP" in response):
         question_type = "mini"
         if "?" in response:
             response = "**Mini-Question:** " + response
     
-    return response, question_type
+    return response, question_type, mastered_episode, subtopic_complete
 
 
 def ensure_initial_tutor_message(model):
+    """Ensure intro message is sent only once, with defensive checks."""
     if st.session_state.intro_sent:
         return
     if st.session_state.messages:
         st.session_state.intro_sent = True
+        save_persisted_state()
         return
     if model is None:
         return
@@ -945,46 +1249,60 @@ def ensure_initial_tutor_message(model):
     personality = st.session_state.personality
     prompt = INTRO_PROMPTS.get(personality, INTRO_PROMPTS["Direct"])
 
-    with st.spinner("Tutor is getting ready..."):
-        reply = chat_with_tutor(
-            model,
-            personality,
-            prompt,
-            st.session_state.pdf_file_ref,
-        )
+    try:
+        with st.spinner("Tutor is getting ready..."):
+            reply = chat_with_tutor(
+                model,
+                personality,
+                prompt,
+                st.session_state.pdf_file_ref,
+            )
+        
+        if not reply or reply.strip() == "":
+            st.error("Tutor generated an empty intro response.")
+            reply = f"Welcome! I'm your {personality} tutor. Let's begin exploring the Silk Road together. What would you like to learn about first?"
+    except Exception as e:
+        st.error(f"Error initializing tutor: {e}")
+        reply = f"Welcome! I'm your {personality} tutor. Let's begin exploring the Silk Road together. What would you like to learn about first?"
 
-    clean_reply, question_type = parse_tutor_response(reply)
+    clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
 
+    # Store current hint policy in message metadata for feedback tracking
+    msg_metadata = {
+        "question_type": question_type,
+        "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
+        "personality": personality,
+    }
+    
     st.session_state.messages.append(
-        Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
+        Message(role="assistant", content=clean_reply, metadata=msg_metadata)
     )
 
     if question_type:
         st.session_state.awaiting_answer = True
         st.session_state.question_type = question_type
+        st.session_state.current_hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
+        st.session_state.hint_given_this_question = False
 
     st.session_state.intro_sent = True
+    save_persisted_state()
+
 
 def check_answer_quality(user_answer: str, question_type: str, personality: str):
     words = user_answer.strip().split()
     if len(words) < 2:
         return False, 0, ""
 
-    # For Direct personality, all questions are quizzes worth 25 XP
     if personality == "Direct" and question_type == "quiz":
-        # Track quiz progress
         if not st.session_state.get("quiz_mode"):
             st.session_state.quiz_mode = True
             st.session_state.quiz_score = 0
             st.session_state.quiz_total = 0
         
-        # Simple validation - if answer is substantive, consider it valid
-        # The tutor AI will determine correctness
         if len(words) >= 3:
             return True, 25, "Quiz question"
         return False, 0, ""
     
-    # Standard quiz reward for other personalities
     if question_type == "quiz":
         return True, 25, "Quiz mastery"
 
@@ -992,51 +1310,79 @@ def check_answer_quality(user_answer: str, question_type: str, personality: str)
     word_count = len(words)
     cleaned = " ".join(lower_answer.split()).strip()
     exact_invalid = {
-        "idk",
-        "i don't know",
-        "i dont know",
-        "no idea",
-        "not sure",
-        "no clue",
-        "?",
-        "??",
-        "???",
+        "idk", "i don't know", "i dont know", "no idea",
+        "not sure", "no clue", "?", "??", "???",
     }
     substring_invalid = {
-        "i don't know",
-        "i dont know",
-        "dont know",
-        "don't know",
+        "i don't know", "i dont know", "dont know", "don't know",
     }
     if cleaned in exact_invalid or any(sub in cleaned for sub in substring_invalid):
         return False, 0, ""
 
     if personality == "Socratic":
-        # Socratic questions are about thinking, not memorization
-        # Any thoughtful response (6+ words) should be rewarded
         if word_count >= 6:
             return True, 10, "Thoughtful response"
         return False, 0, ""
 
     if personality == "Narrative":
         empathy_keywords = {
-            "feel", "felt", "think", "imagine", "because", "worried", "afraid", "hope", "angry", "tired"
+            "feel", "felt", "think", "imagine", "because", "worried", 
+            "afraid", "hope", "angry", "tired", "would", "choose", "decision"
         }
-        if word_count >= 12 or any(keyword in lower_answer for keyword in empathy_keywords):
+        if word_count >= 8 or any(keyword in lower_answer for keyword in empathy_keywords):
             return True, 10, "Insightful historical perspective"
-        return True, 5, "Creative engagement"
+        if word_count >= 4:
+            return True, 5, "Creative engagement"
+        return False, 0, ""
 
-    # Should not reach here for Direct personality
     return False, 0, ""
 
+
+def render_feedback_buttons(message_idx: int):
+    """Render subtle thumbs up/down buttons for a message."""
+    feedback_key = str(message_idx)
+    current_feedback = st.session_state.get("message_feedback", {}).get(feedback_key)
+    
+    # Create a container for the feedback buttons
+    col1, col2, col3 = st.columns([1, 1, 10])
+    
+    with col1:
+        # Thumbs up button
+        up_style = "primary" if current_feedback == "up" else "secondary"
+        up_disabled = current_feedback is not None
+        if st.button(
+            "👍",
+            key=f"thumbs_up_{message_idx}",
+            type=up_style,
+            disabled=up_disabled,
+            help="This response was helpful"
+        ):
+            record_user_feedback(message_idx, "up")
+            st.rerun()
+    
+    with col2:
+        # Thumbs down button
+        down_style = "primary" if current_feedback == "down" else "secondary"
+        down_disabled = current_feedback is not None
+        if st.button(
+            "👎",
+            key=f"thumbs_down_{message_idx}",
+            type=down_style,
+            disabled=down_disabled,
+            help="This response could be better"
+        ):
+            record_user_feedback(message_idx, "down")
+            st.rerun()
+
+
 def render_concept_tracker():
-    concept = LEARNING_CONCEPTS[0]  # Silk Road only
+    concept = LEARNING_CONCEPTS[0]
+    personality = st.session_state.personality
     
     st.markdown(f"**{concept['title']}**")
     
     for subtopic in concept["subtopics"]:
         key = subtopic["key"]
-        # Check session state for this subtopic's progress
         progress = st.session_state.get("subtopic_progress", {}).get(key, {
             "unlocked": subtopic.get("unlocked", False),
             "mastered": subtopic.get("mastered", False)
@@ -1044,7 +1390,6 @@ def render_concept_tracker():
         
         is_current = key == st.session_state.get("current_subtopic")
         
-        # Determine subtopic-level status
         if progress.get("mastered"):
             state_class = "concept-chip mastered"
             icon = "●"
@@ -1062,20 +1407,17 @@ def render_concept_tracker():
             icon = "●"
             color = "blue"
         
-        # Subtopic title
         label = f"<span style='color: {color};'>{icon}</span> <strong>{subtopic['title']}</strong>"
         st.markdown(f"<div class='{state_class}'>{label}</div>", unsafe_allow_html=True)
         
-        # Show learning points if unlocked or current
         if progress.get("unlocked") or is_current:
             learning_points = subtopic.get("learning_points", [])
             if learning_points:
-                # Get individual learning point progress from session state
                 lp_progress = st.session_state.get("learning_point_progress", {}).get(key, {})
                 
                 for idx, point in enumerate(learning_points):
                     lp_key = f"lp_{idx}"
-                    lp_status = lp_progress.get(lp_key, "locked")  # locked, active, completed
+                    lp_status = lp_progress.get(lp_key, "locked")
                     
                     if lp_status == "completed":
                         lp_icon = "●"
@@ -1087,12 +1429,18 @@ def render_concept_tracker():
                         lp_icon = "●"
                         lp_color = "lightgray"
                     
-                    # Truncate long learning points for display
                     display_point = point if len(point) <= 50 else point[:47] + "..."
-                    lp_html = f"<div style='margin-left: 1.5em; font-size: 0.85em; color: #555; margin-top: 0.3em;'><span style='color: {lp_color};'>{lp_icon}</span> {display_point}</div>"
+                    
+                    if personality == "Narrative":
+                        episode_label = f"Ep{idx + 1}: "
+                    else:
+                        episode_label = ""
+                    
+                    lp_html = f"<div style='margin-left: 1.5em; font-size: 0.85em; color: #555; margin-top: 0.3em;'><span style='color: {lp_color};'>{lp_icon}</span> {episode_label}{display_point}</div>"
                     st.markdown(lp_html, unsafe_allow_html=True)
         
         st.markdown("<div style='margin-bottom: 0.8em;'></div>", unsafe_allow_html=True)
+
 
 def sidebar_nav():
     with st.sidebar:
@@ -1100,7 +1448,6 @@ def sidebar_nav():
         username = st.session_state.get("username", "Guest")
         st.caption(f"Welcome, **{username}**!")
         
-        # Navigation buttons
         st.markdown("### Navigate")
         col1, col2 = st.columns(2)
         with col1:
@@ -1122,11 +1469,10 @@ def sidebar_nav():
             
             descriptions = {
                 "Socratic": "Guides you with layered questions",
-                "Narrative": "Immerses you in historical stories",
+                "Narrative": "Immerses you in historical episodes",
                 "Direct": "Delivers clear, structured lessons"
             }
             
-            # Use buttons instead of selectbox for personality
             for p in personalities:
                 is_active = st.session_state.personality == p
                 button_type = "primary" if is_active else "secondary"
@@ -1141,10 +1487,19 @@ def sidebar_nav():
                         st.session_state.question_type = None
                         st.session_state.current_topic = "General Tutoring"
                         st.session_state.intro_sent = False
+                        st.session_state.narrative_episode = 1
+                        st.session_state.narrative_episode_phase = "setup"
+                        st.session_state.message_feedback = {}  # Reset feedback on personality change
+                        st.session_state.last_question_asked = None  # Reset question tracking
                         save_persisted_state()
                         st.rerun()
             
             st.caption(descriptions[st.session_state.personality])
+            
+            if st.session_state.personality == "Narrative":
+                current_ep = st.session_state.get("narrative_episode", 1)
+                st.caption(f"Current: Episode {current_ep} of 4")
+            
             st.divider()
         
         st.metric("Level", st.session_state.level)
@@ -1155,22 +1510,22 @@ def sidebar_nav():
         
         st.divider()
         
-        # Export chat history
+        # Show feedback stats
+        feedback_stats = get_feedback_stats()
+        if feedback_stats["total"] > 0:
+            st.markdown("### Your Feedback")
+            st.caption(f"👍 {feedback_stats['positive']} • 👎 {feedback_stats['negative']}")
+            st.caption(f"Satisfaction: {feedback_stats['rate']}%")
+            st.divider()
+        
         if len(st.session_state.messages) > 0:
             chat_export = []
             for msg in st.session_state.messages:
                 if isinstance(msg, Message):
-                    chat_export.append({
-                        "role": msg.role,
-                        "content": msg.content
-                    })
+                    chat_export.append({"role": msg.role, "content": msg.content})
                 elif isinstance(msg, dict):
-                    chat_export.append({
-                        "role": msg.get("role", "unknown"),
-                        "content": msg.get("content", "")
-                    })
+                    chat_export.append({"role": msg.get("role", "unknown"), "content": msg.get("content", "")})
             
-            import json
             chat_json = json.dumps(chat_export, indent=2)
             
             st.download_button(
@@ -1183,7 +1538,6 @@ def sidebar_nav():
         
         st.divider()
         
-        # User card at bottom
         with st.container(border=True):
             st.markdown("#### Profile")
             username = st.session_state.get("username", "Guest")
@@ -1193,6 +1547,7 @@ def sidebar_nav():
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
                 st.rerun()
+
 
 def page_home():
     st.title("Welcome back")
@@ -1213,13 +1568,11 @@ def page_home():
             )
             questions_total = len([m for m in st.session_state.messages if m.role == "user"])
             mini_qs = len([
-                m
-                for m in st.session_state.messages
+                m for m in st.session_state.messages
                 if hasattr(m, "metadata") and m.metadata and m.metadata.get("type") == "mini"
             ])
             quizzes = len([
-                m
-                for m in st.session_state.messages
+                m for m in st.session_state.messages
                 if hasattr(m, "metadata") and m.metadata and m.metadata.get("type") == "quiz"
             ])
             s1, s2, s3 = st.columns(3)
@@ -1240,6 +1593,15 @@ def page_home():
         with st.container(border=True):
             st.subheader("Next goals")
             st.markdown("- Complete a tutor chat\n- Answer a Mini-Q\n- Finish a quiz round")
+        
+        # Show feedback summary on home page
+        feedback_stats = get_feedback_stats()
+        if feedback_stats["total"] > 0:
+            st.markdown("\n")
+            with st.container(border=True):
+                st.subheader("Tutor Feedback")
+                st.markdown(f"**{feedback_stats['rate']}%** satisfaction")
+                st.caption(f"Based on {feedback_stats['total']} ratings")
 
     st.markdown("---")
     st.subheader("Daily actions")
@@ -1264,14 +1626,22 @@ def page_home():
 
     st.info("Tip: Chat with your AI tutor and answer questions to earn XP!")
 
+
 def page_chat():
     st.title("Tutoring Chat")
-    st.caption(f"Learning with **{st.session_state.personality}** tutor • Answer questions to earn XP")
+    personality = st.session_state.personality
+    
+    if personality == "Narrative":
+        current_ep = st.session_state.get("narrative_episode", 1)
+        st.caption(f"Learning with **{personality}** tutor • Episode {current_ep} of 4 • Answer questions to earn XP")
+    else:
+        st.caption(f"Learning with **{personality}** tutor • Answer questions to earn XP")
+    
     st.markdown(f"**Current Topic:** {st.session_state.current_topic}")
 
     model = get_gemini_model()
     if model is None:
-        st.error("Gemini API key not configured.")
+        st.error("Gemini API key not configured. Please set GEMINI_API_KEY in your environment or Streamlit secrets.")
         return
 
     with st.expander("Upload Curriculum (PDF)", expanded=not st.session_state.pdf_uploaded):
@@ -1300,6 +1670,8 @@ def page_chat():
                     st.session_state.current_topic = "General Tutoring"
                     st.session_state.intro_sent = False
                     st.session_state.topic_refresh_counter = 0
+                    st.session_state.message_feedback = {}
+                    st.session_state.last_question_asked = None
                     save_persisted_state()
                     st.success(f"PDF uploaded: {uploaded_file.name}")
                     st.rerun()
@@ -1321,6 +1693,8 @@ def page_chat():
                     st.session_state.current_topic = "General Tutoring"
                     st.session_state.intro_sent = False
                     st.session_state.topic_refresh_counter = 0
+                    st.session_state.message_feedback = {}
+                    st.session_state.last_question_asked = None
                     save_persisted_state()
                     st.success("Curriculum loaded!")
                     st.rerun()
@@ -1342,31 +1716,35 @@ def page_chat():
             chip_topic = active_concept["title"]
     with challenge_col:
         if st.button("Challenge Question", use_container_width=True, help="Get a tough synthesis question on everything discussed"):
-            # Immediately send challenge prompt
             challenge_prompt = "Give me a challenge question on everything we've discussed in this chat so far. This should test deep synthesis and understanding across multiple concepts."
             
-            st.session_state.messages.append(
-                Message(role="user", content=challenge_prompt, metadata=None)
-            )
+            st.session_state.messages.append(Message(role="user", content=challenge_prompt, metadata=None))
             save_persisted_state()
             
-            with st.spinner("Preparing challenge question..."):
-                reply = chat_with_tutor(
-                    model,
-                    st.session_state.personality,
-                    challenge_prompt,
-                    st.session_state.pdf_file_ref
-                )
+            try:
+                with st.spinner("Preparing challenge question..."):
+                    reply = chat_with_tutor(model, personality, challenge_prompt, st.session_state.pdf_file_ref)
+                
+                if not reply or reply.strip() == "":
+                    reply = "Here's a challenge question: How did the geographic, political, and cultural factors of the Silk Road interact to shape the flow of trade and ideas between East and West?"
+            except Exception as e:
+                st.error(f"Chat error: {e}")
+                reply = f"I encountered an error: {e}. Here's a backup challenge: How did the Silk Road transform both Eastern and Western civilizations?"
             
-            clean_reply, question_type = parse_tutor_response(reply)
+            clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
             
-            st.session_state.messages.append(
-                Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
-            )
+            msg_metadata = {
+                "question_type": question_type,
+                "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
+                "personality": personality,
+            }
+            st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata=msg_metadata))
             
             st.session_state.awaiting_answer = True
             st.session_state.question_type = question_type or "quiz"
             st.session_state.challenge_active = True
+            st.session_state.current_hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
+            st.session_state.hint_given_this_question = False
             save_persisted_state()
             st.rerun()
 
@@ -1380,9 +1758,9 @@ def page_chat():
             ("Cultural Exchange", "Ask me guiding questions about cultural exchange on the Silk Road.")
         ],
         "Narrative": [
-            ("Merchant's Journey", "Put me in a merchant's caravan traveling the Silk Road."),
-            ("Desert Oasis", "Tell the story of arriving at a Silk Road desert oasis."),
-            ("Cultural Meeting", "Let me experience a cultural exchange moment on the Silk Road.")
+            ("Episode 1: Zhang Qian", "Begin Episode 1: Put me in Zhang Qian's shoes as he receives his mission from the Han Emperor."),
+            ("Episode 2: The Journey", "Start Episode 2: I'm ready to experience the dangers of the journey west."),
+            ("Next Episode", "Continue to the next episode in our story.")
         ],
         "Direct": [
             ("Silk Road Origins", "Teach me about the origins and expansion of the Silk Road."),
@@ -1391,7 +1769,7 @@ def page_chat():
         ]
     }
     
-    starts = quick_starts.get(st.session_state.personality, quick_starts["Direct"])
+    starts = quick_starts.get(personality, quick_starts["Direct"])
     with pp1:
         if st.button(starts[0][0], use_container_width=True):
             chip_query = starts[0][1]
@@ -1411,9 +1789,9 @@ def page_chat():
     
     ensure_initial_tutor_message(model)
 
+    # Render chat messages with feedback buttons
     with st.container(border=True):
         for idx, m in enumerate(st.session_state.messages):
-            # Handle both dict and Message object formats
             if isinstance(m, dict):
                 role = m.get("role")
                 content = m.get("content")
@@ -1429,40 +1807,58 @@ def page_chat():
                     with col1:
                         if st.session_state.get("editing_message_idx") == idx:
                             edited_text = st.text_area(
-                                "Edit message",
-                                value=content,
-                                key=f"edit_{idx}",
-                                label_visibility="collapsed"
+                                "Edit message", value=content, key=f"edit_{idx}", label_visibility="collapsed"
                             )
                             if st.button("Save", key=f"save_{idx}"):
-                                # Update the message
                                 if isinstance(st.session_state.messages[idx], dict):
                                     st.session_state.messages[idx]["content"] = edited_text
                                 else:
                                     st.session_state.messages[idx].content = edited_text
                                 st.session_state.editing_message_idx = None
-                                
-                                # Remove all messages after this one
                                 st.session_state.messages = st.session_state.messages[:idx+1]
                                 
-                                # Re-prompt the model with the edited message
-                                with st.spinner("Tutor is thinking..."):
-                                    reply = chat_with_tutor(
-                                        model,
-                                        st.session_state.personality,
-                                        edited_text,
-                                        st.session_state.pdf_file_ref
-                                    )
+                                # Clear feedback for removed messages
+                                keys_to_remove = [k for k in st.session_state.message_feedback.keys() if int(k) > idx]
+                                for k in keys_to_remove:
+                                    del st.session_state.message_feedback[k]
                                 
-                                clean_reply, question_type = parse_tutor_response(reply)
+                                # Reset question tracking
+                                st.session_state.last_question_asked = None
                                 
+                                try:
+                                    with st.spinner("Tutor is thinking..."):
+                                        reply = chat_with_tutor(model, personality, edited_text, st.session_state.pdf_file_ref)
+                                    
+                                    if not reply or reply.strip() == "":
+                                        reply = "I'm having trouble generating a response. Could you please try rephrasing your question?"
+                                except Exception as e:
+                                    st.error(f"Chat error: {e}")
+                                    reply = f"I encountered an error: {e}. Please try again."
+                                
+                                clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
+                                
+                                if mastered_episode is not None and personality == "Narrative":
+                                    mark_episode_mastered(mastered_episode)
+                                    st.toast(f"Episode {mastered_episode} mastered!", icon="✅")
+                                
+                                if subtopic_complete:
+                                    mark_subtopic_mastered(st.session_state.current_subtopic)
+                                    st.toast("Chapter complete! Subtopic mastered!", icon="🎉")
+                                
+                                msg_metadata = {
+                                    "question_type": question_type,
+                                    "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
+                                    "personality": personality,
+                                }
                                 st.session_state.messages.append(
-                                    Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
+                                    Message(role="assistant", content=clean_reply, metadata=msg_metadata)
                                 )
                                 
                                 if question_type:
                                     st.session_state.awaiting_answer = True
                                     st.session_state.question_type = question_type
+                                    st.session_state.current_hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
+                                    st.session_state.hint_given_this_question = False
                                 
                                 save_persisted_state()
                                 st.rerun()
@@ -1474,7 +1870,11 @@ def page_chat():
                                 st.session_state.editing_message_idx = idx
                                 st.rerun()
                 else:
+                    # Assistant message - show content and feedback buttons
                     st.markdown(content)
+                    
+                    # Render subtle feedback buttons beneath assistant messages
+                    render_feedback_buttons(idx)
 
     user_input = st.chat_input("Ask a question or answer the tutor...")
     query = chip_query or user_input
@@ -1486,79 +1886,104 @@ def page_chat():
         elif user_input and not st.session_state.awaiting_answer:
             topic_update = user_input.strip()
 
-        st.session_state.messages.append(
-            Message(role="user", content=query, metadata=None)
-        )
+        st.session_state.messages.append(Message(role="user", content=query, metadata=None))
         save_persisted_state()
 
         pending_type = st.session_state.question_type
+        continuation_prompt = None
+        xp_awarded = 0
+        xp_reason = ""
+        
         if st.session_state.awaiting_answer and pending_type:
-            # Calculate response time
-            import time
             current_time = time.time()
-            response_time = current_time - st.session_state.get("last_question_time", current_time)
+            last_time = st.session_state.get("last_question_time")
+            response_time = current_time - last_time if last_time is not None else 0
             
-            is_valid, xp, reason = check_answer_quality(
-                query, pending_type, st.session_state.personality
+            is_valid, xp, reason = check_answer_quality(query, pending_type, personality)
+            
+            hint_policy = st.session_state.get("current_hint_policy", "LIGHT_HINTS")
+            hint_given = st.session_state.get("hint_given_this_question", False)
+            attempt_count = st.session_state.get("question_attempts", 1)
+            
+            hint_reward = calculate_hint_effectiveness_reward(
+                hint_policy=hint_policy,
+                hint_was_given=hint_given,
+                answer_correct=(is_valid and xp > 0),
+                response_time=response_time,
+                attempt_count=attempt_count
             )
+            record_bandit_reward("hint_policy", hint_policy, hint_reward)
             
-            # Record bandit rewards
             if pending_type == "quiz":
-                # Quiz difficulty reward
-                if response_time < 120 and is_valid and xp > 0:  # < 2 minutes, correct
+                if response_time < 120 and is_valid and xp > 0:
                     difficulty_reward = 1.0
-                elif response_time < 120 and not is_valid:  # < 2 minutes, incorrect (too hard?)
+                elif response_time < 120 and not is_valid:
                     difficulty_reward = 0.3
-                else:  # > 2 minutes (timeout or disengaged)
+                else:
                     difficulty_reward = 0.0 if response_time > 180 else 0.5
                 
                 record_bandit_reward("quiz_difficulty", st.session_state.get("quiz_difficulty", "MEDIUM"), difficulty_reward)
                 
-                # Re-select difficulty for next quiz
-                context = {"user_level": st.session_state.level, "xp": st.session_state.xp}
+                context = {"level": st.session_state.level, "xp": st.session_state.xp}
                 st.session_state.quiz_difficulty = select_bandit_action("quiz_difficulty", context)
             
-            # For Socratic: track hint policy and question depth rewards
-            if st.session_state.personality == "Socratic":
-                # Depth reward: good if answered correctly and not too slow
+            if personality == "Socratic":
                 if is_valid and xp > 0:
                     if response_time < 90:
-                        depth_reward = 1.0  # Quick and correct
+                        depth_reward = 1.0
                     elif response_time < 180:
-                        depth_reward = 0.7  # Correct but slow
+                        depth_reward = 0.7
                     else:
-                        depth_reward = 0.4  # Very slow
+                        depth_reward = 0.4
                 elif "idk" not in query.lower() and "don't know" not in query.lower():
-                    depth_reward = 0.4  # Trying but incorrect
+                    depth_reward = 0.4
                 else:
-                    depth_reward = 0.1  # Gave up
+                    depth_reward = 0.1
                 
                 record_bandit_reward("question_depth", st.session_state.get("question_depth", "DEEP_PROBE"), depth_reward)
                 
-                # Re-select for next question
                 context = {"engagement": depth_reward, "level": st.session_state.level}
                 st.session_state.question_depth = select_bandit_action("question_depth", context)
             
+            context = {"level": st.session_state.level, "personality": personality}
+            st.session_state.hint_policy = select_bandit_action("hint_policy", context)
+            
             if is_valid and xp > 0:
-                award_xp(xp, reason or f"{pending_type.title()} response")
+                xp_awarded = xp
+                xp_reason = reason or f"{pending_type.title()} response"
+                
                 metadata = {
                     "type": pending_type,
                     "xp_awarded": xp,
                     "reason": reason,
-                    "personality": st.session_state.personality,
+                    "personality": personality,
                     "response_time": response_time,
                 }
+                
                 if st.session_state.challenge_active:
-                    award_xp(10, "Challenge bonus")
+                    xp_awarded += 10
+                    xp_reason += " + Challenge bonus"
                     metadata["challenge_bonus"] = 10
                     st.session_state.challenge_active = False
+                
                 if pending_type == "quiz":
                     mark_subtopic_mastered(st.session_state.current_subtopic)
+                
                 st.session_state.messages[-1].metadata = metadata
+                
+                if personality == "Narrative":
+                    continuation_prompt = f"The learner answered well and earned {xp_awarded} XP. Continue naturally with the story - acknowledge their answer briefly and move to the next part of the episode or the next episode. DO NOT repeat the question you just asked."
+                elif personality == "Socratic":
+                    continuation_prompt = f"The learner gave a thoughtful response and earned {xp_awarded} XP. Acknowledge their thinking and continue to the next question or learning point naturally. IMPORTANT: Move forward - do not ask the exact same question again. If they've grasped this concept, move to the NEXT learning point. If they need more depth, ask a DIFFERENT follow-up question."
+                else:
+                    continuation_prompt = f"The learner answered correctly and earned {xp_awarded} XP. Provide brief positive feedback and continue with the next quiz question or learning section."
+                
                 save_persisted_state()
             else:
                 if st.session_state.challenge_active:
                     st.toast("Challenge bonus still waiting for a strong answer.", icon="⌛")
+                st.session_state.question_attempts = st.session_state.get("question_attempts", 0) + 1
+            
             st.session_state.awaiting_answer = False
             st.session_state.question_type = None
         elif topic_update:
@@ -1567,33 +1992,50 @@ def page_chat():
             st.session_state.topic_refresh_counter = 0
             save_persisted_state()
 
-        with st.spinner("Tutor is thinking..."):
-            reply = chat_with_tutor(
-                model,
-                st.session_state.personality,
-                query,
-                st.session_state.pdf_file_ref
-            )
+        try:
+            with st.spinner("Tutor is thinking..."):
+                reply = chat_with_tutor(model, personality, query, st.session_state.pdf_file_ref, continuation_prompt)
+            
+            if not reply or reply.strip() == "":
+                st.error("Tutor generated an empty response")
+                reply = "I'm having trouble generating a response right now. Could you please rephrase your question or try again?"
+        except Exception as e:
+            st.error(f"Chat error: {e}")
+            reply = f"I encountered an error while processing your request: {e}. Please try again."
 
-        clean_reply, question_type = parse_tutor_response(reply)
+        clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
         
+        if mastered_episode is not None and personality == "Narrative":
+            mark_episode_mastered(mastered_episode)
+            st.toast(f"Episode {mastered_episode} mastered!", icon="✅")
+        
+        if subtopic_complete:
+            mark_subtopic_mastered(st.session_state.current_subtopic)
+            st.toast("Chapter complete! Subtopic mastered!", icon="🎉")
+        
+        # Store metadata including current bandit settings for feedback tracking
+        msg_metadata = {
+            "question_type": question_type,
+            "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
+            "personality": personality,
+        }
         st.session_state.messages.append(
-            Message(role="assistant", content=clean_reply, metadata={"question_type": question_type})
+            Message(role="assistant", content=clean_reply, metadata=msg_metadata)
         )
+        
+        # Show XP notification AFTER adding the message but BEFORE rerun
+        if xp_awarded > 0:
+            award_xp(xp_awarded, xp_reason, skip_rerun=True)
+        
         refresh_topic_periodically()
         
-        # Update learning point progress
         st.session_state.message_count_for_lp_update += 1
-        personality = st.session_state.personality
         
-        # For Direct, update after quiz completion
         if personality == "Direct" and question_type == "quiz":
             update_learning_point_progress()
-        # For Socratic/Narrative, update every 3 messages
         elif personality in ["Socratic", "Narrative"] and st.session_state.message_count_for_lp_update >= 3:
             update_learning_point_progress()
             st.session_state.message_count_for_lp_update = 0
-            # Also check if current learning point is understood
             if check_learning_point_understanding():
                 st.toast("Learning point mastered!", icon="✓")
         
@@ -1602,11 +2044,11 @@ def page_chat():
         if question_type:
             st.session_state.awaiting_answer = True
             st.session_state.question_type = question_type
-            # Record question start time for bandit timeout tracking
-            import time
             st.session_state.last_question_time = time.time()
+            st.session_state.question_attempts = 1
+            st.session_state.current_hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
+            st.session_state.hint_given_this_question = False
             
-            # Select adaptive settings before next question (for display)
             if question_type == "quiz":
                 context = {"level": st.session_state.level, "xp": st.session_state.xp}
                 st.session_state.quiz_difficulty = select_bandit_action("quiz_difficulty", context)
@@ -1614,21 +2056,36 @@ def page_chat():
         st.rerun()
 
     # Bottom section with Continue buttons for Direct, Reset, and status
-    if st.session_state.personality == "Direct" and len(st.session_state.messages) > 1:
-        # Show Continue/Quiz buttons for Direct personality
+    if personality == "Direct" and len(st.session_state.messages) > 1:
         col_cont1, col_cont2, col_cont3 = st.columns([1, 1, 1])
         with col_cont1:
             if st.button("Continue", use_container_width=True, type="primary", key="continue_btn_bottom"):
                 query = "continue"
                 st.session_state.messages.append(Message(role="user", content=query, metadata=None))
                 save_persisted_state()
-                with st.spinner("Tutor is thinking..."):
-                    reply = chat_with_tutor(model, st.session_state.personality, query, st.session_state.pdf_file_ref)
-                clean_reply, question_type = parse_tutor_response(reply)
-                st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata={"question_type": question_type}))
+                
+                try:
+                    with st.spinner("Tutor is thinking..."):
+                        reply = chat_with_tutor(model, personality, query, st.session_state.pdf_file_ref)
+                    
+                    if not reply or reply.strip() == "":
+                        reply = "Let me continue with the next section of our lesson..."
+                except Exception as e:
+                    st.error(f"Chat error: {e}")
+                    reply = f"I encountered an error: {e}. Please try again."
+                
+                clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
+                msg_metadata = {
+                    "question_type": question_type,
+                    "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
+                    "personality": personality,
+                }
+                st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata=msg_metadata))
                 if question_type:
                     st.session_state.awaiting_answer = True
                     st.session_state.question_type = question_type
+                    st.session_state.current_hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
+                    st.session_state.hint_given_this_question = False
                 save_persisted_state()
                 st.rerun()
         with col_cont2:
@@ -1636,13 +2093,29 @@ def page_chat():
                 query = "I'm ready for the quiz"
                 st.session_state.messages.append(Message(role="user", content=query, metadata=None))
                 save_persisted_state()
-                with st.spinner("Preparing quiz..."):
-                    reply = chat_with_tutor(model, st.session_state.personality, query, st.session_state.pdf_file_ref)
-                clean_reply, question_type = parse_tutor_response(reply)
-                st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata={"question_type": question_type}))
+                
+                try:
+                    with st.spinner("Preparing quiz..."):
+                        reply = chat_with_tutor(model, personality, query, st.session_state.pdf_file_ref)
+                    
+                    if not reply or reply.strip() == "":
+                        reply = "[QUIZ] Question 1: What was the primary purpose of Zhang Qian's mission to the West?"
+                except Exception as e:
+                    st.error(f"Chat error: {e}")
+                    reply = f"I encountered an error: {e}. Please try again."
+                
+                clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
+                msg_metadata = {
+                    "question_type": question_type,
+                    "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
+                    "personality": personality,
+                }
+                st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata=msg_metadata))
                 if question_type:
                     st.session_state.awaiting_answer = True
                     st.session_state.question_type = question_type
+                    st.session_state.current_hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
+                    st.session_state.hint_given_this_question = False
                 save_persisted_state()
                 st.rerun()
         with col_cont3:
@@ -1657,10 +2130,81 @@ def page_chat():
                 st.session_state.intro_sent = False
                 st.session_state.challenge_active = False
                 st.session_state.topic_refresh_counter = 0
+                st.session_state.narrative_episode = 1
+                st.session_state.narrative_episode_phase = "setup"
+                st.session_state.message_feedback = {}
+                st.session_state.last_question_asked = None
+                save_persisted_state()
+                st.rerun()
+    elif personality == "Narrative" and len(st.session_state.messages) > 1:
+        col_ep1, col_ep2, col_ep3 = st.columns([1, 1, 1])
+        with col_ep1:
+            current_ep = st.session_state.get("narrative_episode", 1)
+            if st.button(f"Next Episode", use_container_width=True, type="primary", key="next_episode_btn"):
+                query = f"I'm ready for Episode {current_ep + 1 if current_ep < 4 else 'the chapter recap'}."
+                st.session_state.messages.append(Message(role="user", content=query, metadata=None))
+                save_persisted_state()
+                
+                try:
+                    with st.spinner("Preparing next episode..."):
+                        reply = chat_with_tutor(model, personality, query, st.session_state.pdf_file_ref)
+                    
+                    if not reply or reply.strip() == "":
+                        reply = "Let me continue with the next episode of our journey..."
+                except Exception as e:
+                    st.error(f"Chat error: {e}")
+                    reply = f"I encountered an error: {e}. Please try again."
+                
+                clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
+                
+                if mastered_episode is not None:
+                    mark_episode_mastered(mastered_episode)
+                    st.toast(f"Episode {mastered_episode} mastered!", icon="✅")
+                
+                if subtopic_complete:
+                    mark_subtopic_mastered(st.session_state.current_subtopic)
+                    st.toast("Chapter complete!", icon="🎉")
+                
+                msg_metadata = {
+                    "question_type": question_type,
+                    "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
+                    "personality": personality,
+                }
+                st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata=msg_metadata))
+                if question_type:
+                    st.session_state.awaiting_answer = True
+                    st.session_state.question_type = question_type
+                    st.session_state.current_hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
+                    st.session_state.hint_given_this_question = False
+                save_persisted_state()
+                st.rerun()
+        with col_ep2:
+            if st.button("Switch to Direct Quiz", use_container_width=True, key="switch_direct_btn"):
+                st.session_state.personality = "Direct"
+                st.session_state.chat_session = None
+                st.session_state.intro_sent = False
+                st.toast("Switched to Direct tutor for mastery quiz!", icon="🎯")
+                save_persisted_state()
+                st.rerun()
+        with col_ep3:
+            if st.button("Reset chat", use_container_width=True, type="secondary"):
+                st.session_state.messages = []
+                st.session_state.awaiting_answer = False
+                st.session_state.question_type = None
+                st.session_state.current_topic = get_concept()["title"]
+                st.session_state.chat_session = None
+                st.session_state.chat_session_personality = None
+                st.session_state.chat_session_pdf_id = None
+                st.session_state.intro_sent = False
+                st.session_state.challenge_active = False
+                st.session_state.topic_refresh_counter = 0
+                st.session_state.narrative_episode = 1
+                st.session_state.narrative_episode_phase = "setup"
+                st.session_state.message_feedback = {}
+                st.session_state.last_question_asked = None
                 save_persisted_state()
                 st.rerun()
     else:
-        # Regular Reset button for non-Direct personalities
         col_a, col_b = st.columns([1, 2])
         with col_a:
             if st.button("Reset chat", use_container_width=True):
@@ -1674,13 +2218,16 @@ def page_chat():
                 st.session_state.intro_sent = False
                 st.session_state.challenge_active = False
                 st.session_state.topic_refresh_counter = 0
+                st.session_state.narrative_episode = 1
+                st.session_state.narrative_episode_phase = "setup"
+                st.session_state.message_feedback = {}
+                st.session_state.last_question_asked = None
                 save_persisted_state()
                 st.rerun()
         with col_b:
             if st.session_state.awaiting_answer:
                 q_type = st.session_state.question_type
                 if q_type == "mini":
-                    personality = st.session_state.personality
                     if personality == "Socratic":
                         xp_label = "10 XP for strong reasoning"
                     elif personality == "Narrative":
@@ -1694,12 +2241,18 @@ def page_chat():
                 else:
                     st.caption("Socratic Mini-Q: 10 XP • Narrative Mini-Q: 5-10 XP • Direct Quiz: 25 XP per question")
     
-    # Status line for Direct
-    if st.session_state.personality == "Direct":
+    if personality == "Direct":
         if st.session_state.awaiting_answer:
             st.info(f"Awaiting quiz answer • 25 XP per correct answer")
         else:
             st.caption("Use 'Continue' to advance through the lesson, or type questions anytime")
+    elif personality == "Narrative":
+        current_ep = st.session_state.get("narrative_episode", 1)
+        if st.session_state.awaiting_answer:
+            st.info(f"Episode {current_ep} • Awaiting your response • 5-10 XP for engagement")
+        else:
+            st.caption(f"Episode {current_ep} of 4 • Use 'Next Episode' to advance or type to continue the story")
+
 
 def apply_styles():
     st.markdown("""
@@ -1749,6 +2302,23 @@ def apply_styles():
             box-shadow: 0 10px 18px rgba(93, 173, 226, 0.2);
             border-color: rgba(93, 173, 226, 0.45);
             background: rgba(93, 173, 226, 0.18);
+        }
+
+        /* Subtle feedback buttons styling */
+        div[data-testid="stHorizontalBlock"] .stButton>button[kind="secondary"] {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.9rem;
+            min-height: 0;
+            border-radius: 8px;
+            background: rgba(200, 200, 200, 0.15);
+            border: 1px solid rgba(150, 150, 150, 0.2);
+            box-shadow: none;
+        }
+        
+        div[data-testid="stHorizontalBlock"] .stButton>button[kind="secondary"]:hover {
+            background: rgba(93, 173, 226, 0.2);
+            transform: none;
+            box-shadow: none;
         }
 
         div[data-testid="metric-container"] {
@@ -1843,6 +2413,7 @@ def apply_styles():
         </style>
         """, unsafe_allow_html=True)
 
+
 def show_login_page():
     st.title("Sign in to TutorQuest")
     st.write("Create an account or sign in to persist your progress across devices.")
@@ -1860,8 +2431,8 @@ def show_login_page():
         if user_id:
             st.session_state.user_id = user_id
             st.session_state.username = username.strip()
-            st.session_state.db_state_loaded = False  # Mark as needing to load
-            save_persisted_state()  # Save login state immediately
+            st.session_state.db_state_loaded = False
+            save_persisted_state()
             st.success("Signed in successfully")
             st.rerun()
         else:
@@ -1873,11 +2444,12 @@ def show_login_page():
             st.session_state.user_id = created
             st.session_state.username = username.strip()
             st.session_state.db_state_loaded = False
-            save_persisted_state()  # Save login state immediately
+            save_persisted_state()
             st.success("Account created and signed in.")
             st.rerun()
         else:
             st.error("Could not create account (username may already exist).")
+
 
 def main():
     st.set_page_config(
@@ -1886,7 +2458,6 @@ def main():
         layout="wide",
         initial_sidebar_state="expanded"
     )
-    # ensure DB exists
     try:
         db.init_db()
     except Exception as e:
@@ -1895,17 +2466,14 @@ def main():
     init_state()
     apply_styles()
 
-    # If user is not signed in, show login/register page
     if not st.session_state.get("user_id"):
         show_login_page()
         return
 
-    # If logged in and DB has stored state, load it once
     if st.session_state.get("user_id") and not st.session_state.get("db_state_loaded"):
         try:
             state = db.get_user_state(st.session_state["user_id"])
             if isinstance(state, dict):
-                # Load messages properly as Message objects
                 persisted_messages = state.get("messages")
                 if isinstance(persisted_messages, list) and persisted_messages:
                     restored = []
@@ -1925,11 +2493,13 @@ def main():
                     if restored:
                         st.session_state.messages = restored
                 
-                # Load other state
                 for k, v in state.items():
                     if k == "messages":
-                        continue  # Already handled above
-                    if k in ("xp", "level", "concept_progress", "subtopic_progress", "learning_point_progress", "current_concept", "current_subtopic", "current_topic", "personality", "challenge_active"):
+                        continue
+                    if k in ("xp", "level", "concept_progress", "subtopic_progress", "learning_point_progress", 
+                             "current_concept", "current_subtopic", "current_topic", "personality", 
+                             "challenge_active", "intro_sent", "narrative_episode", "narrative_episode_phase",
+                             "hint_policy", "question_depth", "quiz_difficulty", "bandit_stats", "message_feedback"):
                         st.session_state[k] = v
                 
                 st.session_state.db_state_loaded = True
@@ -1942,6 +2512,7 @@ def main():
         page_home()
     else:
         page_chat()
+
 
 if __name__ == "__main__":
     main()
