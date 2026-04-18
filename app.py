@@ -17,6 +17,16 @@ except Exception:
 NEXT_LEVEL_XP = 100
 STATE_FILE = Path(__file__).with_name("state_store.json")
 
+PERSONALITIES = ["Socratic", "Socratic Gamified", "Direct", "Direct Gamified"]
+
+def base_personality(p: str) -> str:
+    return p.replace(" Gamified", "")
+
+def is_gamified(p: str = None) -> bool:
+    if p is None:
+        p = st.session_state.get("personality", "Socratic")
+    return "Gamified" in p
+
 LEARNING_CONCEPTS = [
     {
         "key": "silk_road",
@@ -159,15 +169,13 @@ def save_persisted_state():
         "personality": st.session_state.get("personality"),
         "challenge_active": st.session_state.get("challenge_active", False),
         "messages": messages_payload,
-        "user_id": st.session_state.get("user_id"),
-        "username": st.session_state.get("username"),
+        # NOTE: user_id and username are NOT saved to JSON file
+        # They should only exist in session state after login
         "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
         "question_depth": st.session_state.get("question_depth", "DEEP_PROBE"),
         "quiz_difficulty": st.session_state.get("quiz_difficulty", "MEDIUM"),
         "bandit_stats": st.session_state.get("bandit_stats", {}),
         "intro_sent": st.session_state.get("intro_sent", False),
-        "narrative_episode": st.session_state.get("narrative_episode", 1),
-        "narrative_episode_phase": st.session_state.get("narrative_episode_phase", "setup"),
         "hint_given_this_question": st.session_state.get("hint_given_this_question", False),
         "current_hint_policy": st.session_state.get("current_hint_policy"),
         "message_feedback": st.session_state.get("message_feedback", {}),
@@ -251,7 +259,7 @@ def init_state():
         "depth_rewards": {"SHALLOW_CHECK": [], "DEEP_PROBE": []},
         "difficulty_rewards": {"EASY": [], "MEDIUM": [], "HARD": []},
         "user_feedback_rewards": {"NO_AUTOMATIC_HINTS": [], "LIGHT_HINTS": [], "FULL_HINTS": []},
-        "personality_feedback": {"Socratic": [], "Narrative": [], "Direct": []},
+        "personality_feedback": {"Socratic": [], "Socratic Gamified": [], "Direct": [], "Direct Gamified": []},
         "response_quality_scores": [],
     }
     
@@ -283,8 +291,10 @@ def init_state():
         "quiz_score": 0,
         "quiz_total": 0,
         "quiz_mode": False,
-        "user_id": persisted.get("user_id"),
-        "username": persisted.get("username"),
+        # NOTE: user_id and username start as None and are only set by login
+        # Do NOT load from JSON file to prevent auto-login bypass
+        "user_id": None,
+        "username": None,
         "message_count_for_lp_update": 0,
         "hint_policy": persisted.get("hint_policy", "LIGHT_HINTS"),
         "question_depth": persisted.get("question_depth", "DEEP_PROBE"),
@@ -293,8 +303,6 @@ def init_state():
         "question_attempts": 0,
         "bandit_stats": persisted.get("bandit_stats", default_bandit_stats),
         "turns_since_lp_check": 0,
-        "narrative_episode": persisted.get("narrative_episode", 1),
-        "narrative_episode_phase": persisted.get("narrative_episode_phase", "setup"),
         "hint_given_this_question": persisted.get("hint_given_this_question", False),
         "current_hint_policy": persisted.get("current_hint_policy"),
         "just_awarded_xp": False,
@@ -313,7 +321,7 @@ def init_state():
     if "user_feedback_rewards" not in bandit_stats:
         bandit_stats["user_feedback_rewards"] = {"NO_AUTOMATIC_HINTS": [], "LIGHT_HINTS": [], "FULL_HINTS": []}
     if "personality_feedback" not in bandit_stats:
-        bandit_stats["personality_feedback"] = {"Socratic": [], "Narrative": [], "Direct": []}
+        bandit_stats["personality_feedback"] = {"Socratic": [], "Socratic Gamified": [], "Direct": [], "Direct Gamified": []}
     if "response_quality_scores" not in bandit_stats:
         bandit_stats["response_quality_scores"] = []
     st.session_state.bandit_stats = bandit_stats
@@ -352,6 +360,8 @@ def level_progress(xp: int) -> float:
 
 def award_xp(amount: int = 15, reason: str = "", skip_rerun: bool = False):
     """Award XP with visible notification."""
+    if not is_gamified(st.session_state.get("personality")):
+        return
     st.session_state.xp += amount
     new_level = 1 + st.session_state.xp // NEXT_LEVEL_XP
     leveled_up = False
@@ -380,20 +390,58 @@ except Exception as e:
     _genai_import_error = str(e)
     genai = None
 
-def get_gemini_model():
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
+_groq_import_error: Optional[str] = None
+try:
+    from groq import Groq
+except Exception as e:
+    _groq_import_error = str(e)
+    Groq = None
+
+def get_ai_model():
+    """Return a configured AI model (Groq or Gemini) or None if not available.
+    
+    Tries Groq first (better free tier), falls back to Gemini.
+    Returns dict with provider info and model/client.
+    """
+    # Try Groq first (14,400 requests/day vs Gemini's 1,500)
+    groq_key = os.getenv("GROQ_API_KEY")
+    if not groq_key:
         try:
-            api_key = st.secrets.get("GEMINI_API_KEY")
+            groq_key = st.secrets.get("GROQ_API_KEY")
         except Exception:
-            api_key = None
-    if not api_key or genai is None:
-        return None
-    try:
-        genai.configure(api_key=api_key)
-        return genai.GenerativeModel("gemini-2.5-flash")
-    except Exception:
-        return None
+            pass
+    
+    if groq_key and Groq is not None:
+        try:
+            client = Groq(api_key=groq_key)
+            return {
+                "provider": "groq",
+                "client": client,
+                "model": "llama-3.1-70b-versatile"
+            }
+        except Exception:
+            pass
+    
+    # Fall back to Gemini
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if not gemini_key:
+        try:
+            gemini_key = st.secrets.get("GEMINI_API_KEY")
+        except Exception:
+            pass
+    
+    if gemini_key and genai is not None:
+        try:
+            genai.configure(api_key=gemini_key)
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            return {
+                "provider": "gemini",
+                "model": model
+            }
+        except Exception:
+            pass
+    
+    return None
 
 def upload_pdf_to_gemini(pdf_path: str):
     api_key = os.getenv("GEMINI_API_KEY")
@@ -455,91 +503,6 @@ CRITICAL RULES:
 Tone: patient, encouraging, guide-like. Teach first, then help them think deeper. ALWAYS engage with student responses. NEVER repeat questions.
 ''',
 
-    "Narrative": '''You are a narrative-style history tutor who teaches through immersive EPISODIC storytelling.
-
-CRITICAL STRUCTURE: You teach in EPISODES, not free-flowing story. Each subtopic = exactly 4 EPISODES (one per learning point).
-
-CURRENT SUBTOPIC has these 4 learning points, each is ONE EPISODE:
-{episode_list}
-
-HOW TO TEACH EACH EPISODE:
-
-**OPENING (3-4 vivid sentences)**
-Place the learner IN the historical moment as a character or observer. Use sensory details: sights, sounds, smells, emotions. Make them feel the motivations and trade-offs of the time. End with a hook that leads naturally to your question.
-
-**ENGAGEMENT QUESTION [MINI-Q]**
-Choose ONE question type based on the content:
-
-A) PREDICTION: "Based on what you've experienced, what do you think happens next?"
-   - Good for: outcomes, consequences, historical turns
-   
-B) DECISION: "You must choose: A) [option] B) [option] C) [option]. What would you do and why?"
-   - Good for: trade routes, political choices, strategic decisions
-   
-C) INTERPRETATION: "In your own words, why would [person/group] make this choice?"
-   - Good for: motivations, cultural factors, economic reasoning
-
-Use [MINI-Q] tag. Award 5-10 XP based on thoughtfulness.
-
-**WHEN STUDENT ANSWERS:**
-1. ACKNOWLEDGE their choice/prediction first ("You chose the mountain route because...")
-2. REVEAL what actually happened historically (2-3 sentences)
-3. EXPLAIN why it matters - connect to the learning point
-4. VALIDATE good reasoning even if historically "wrong"
-
-**QUICK KNOWLEDGE CHECK (embedded naturally):**
-One quick factual question, conversationally woven in:
-- "Just to anchor this moment: roughly when did this happen?"
-- "Before we move on: which empire controlled this region?"
-- Keep it natural, not quiz-style
-
-**MASTERY SIGNAL:**
-If the learner has shown understanding (explained in own words, made reasonable choice with justification, or answered 2+ questions correctly), emit:
-[MASTERED episode_X] (where X is 1, 2, 3, or 4)
-
-Then say: "Ready for Episode [X+1]?" or if episode 4: "Ready for the chapter recap?"
-
----
-
-**CHAPTER RECAP (after all 4 episodes):**
-"Before we close this chapter on [subtopic], let's reflect on your journey."
-
-Present 2-3 STORY-THEMED reflection questions (still narrative, not quiz):
-- "You've walked Zhang Qian's path. If you were advising the Han Emperor, what would you report as the most important discovery?"
-- "Looking back at the choices you made, which route would you actually take and why?"
-- "What surprised you most about life on the Silk Road?"
-
-{quiz_difficulty_instruction}
-
-After good recap answers, emit: [SUBTOPIC_COMPLETE]
-Then offer: "Would you like to explore the next subtopic, or switch to Direct tutor for a mastery quiz?"
-
----
-
-**QUESTION FLOW BY EPISODE:**
-- Episode 1: Usually PREDICTION (what will the envoy discover?)
-- Episode 2: Usually DECISION (which route/choice would you make?)
-- Episode 3: Usually INTERPRETATION (why would they do this?)
-- Episode 4: Usually SYNTHESIS (how does it all connect?)
-
-**MASTERY CRITERIA:**
-Mark [MASTERED episode_X] when learner:
-- Explains the concept in their own words, OR
-- Chooses historically reasonable option AND justifies it, OR
-- Shows understanding across 2+ exchanges
-
-**CRITICAL RULES:**
-- ONE episode = ONE learning point = ONE sidebar bullet
-- NEVER use mechanical labels like "Phase 1", "Phase 2", "Setup", "Engagement" in your responses to the student
-- Keep immersion: you're a guide IN the story, not a lecturer about it
-- ALWAYS acknowledge student's choice/answer before revealing history
-- Never skip the knowledge check - it anchors learning
-- After 4 episodes + recap = subtopic mastered
-- Flow naturally from one part to the next without announcing structure
-
-**TONE:** Cinematic for story. Warm for checks. You're a guide walking beside them, not a quiz master testing them. Keep the structure invisible - the student should just experience an engaging story with questions woven in.
-''',
-
     "Direct": '''You are a direct, structured history tutor who delivers curriculum-aligned lessons clearly and efficiently.
 
 CURRENT SUBTOPIC STRUCTURE:
@@ -593,12 +556,6 @@ INTRO_PROMPTS = {
         "For each subtopic, I have 4 specific learning points to cover. Let's start with Origins & Expansion. "
         "Ready to begin?"
     ),
-    "Narrative": (
-        "Welcome, traveler! I'll guide you through the Silk Road as an immersive journey told in episodes. "
-        "Each subtopic is a chapter with 4 episodes - and in each episode, you'll step INTO history, make choices, and discover what really happened. "
-        "We're starting with Origins & Expansion. Episode 1 begins with a fateful day in the Han Emperor's palace... "
-        "Ready to begin Episode 1?"
-    ),
     "Direct": (
         "Welcome! I'll teach you about the Silk Road in a clear, structured way. "
         "For each subtopic, I'll present the material in 2 sections, then give you a 3-question quiz. "
@@ -609,7 +566,7 @@ INTRO_PROMPTS = {
 }
 
 def get_personality_prompt(personality: str) -> str:
-    return PERSONALITY_PROMPTS.get(personality, PERSONALITY_PROMPTS["Direct"])
+    return PERSONALITY_PROMPTS.get(base_personality(personality), PERSONALITY_PROMPTS["Direct"])
 
 
 def get_concept(key: Optional[str] = None):
@@ -684,7 +641,7 @@ def update_learning_point_progress():
 
 
 def mark_episode_mastered(episode_num: int):
-    """Mark a specific episode (learning point) as mastered for Narrative."""
+    """Mark a specific episode (learning point) as mastered."""
     current_subtopic = st.session_state.get("current_subtopic")
     if not current_subtopic:
         return
@@ -704,10 +661,6 @@ def mark_episode_mastered(episode_num: int):
         next_lp_key = f"lp_{episode_num}"
         if st.session_state.learning_point_progress[current_subtopic].get(next_lp_key, "locked") == "locked":
             st.session_state.learning_point_progress[current_subtopic][next_lp_key] = "active"
-    
-    # Update narrative episode tracker
-    st.session_state.narrative_episode = episode_num + 1 if episode_num < 4 else 4
-    st.session_state.narrative_episode_phase = "setup"
     
     save_persisted_state()
 
@@ -729,9 +682,6 @@ def mark_subtopic_mastered(key: str):
             next_key = subtopics[index + 1]["key"]
             unlock_subtopic(next_key)
             st.session_state.current_subtopic = next_key
-            # Reset narrative episode for new subtopic
-            st.session_state.narrative_episode = 1
-            st.session_state.narrative_episode_phase = "setup"
             st.toast("New subtopic unlocked!", icon="🚀")
         save_persisted_state()
 
@@ -810,7 +760,7 @@ def record_bandit_reward(action_type: str, action: str, reward: float):
         "depth_rewards": {"SHALLOW_CHECK": [], "DEEP_PROBE": []},
         "difficulty_rewards": {"EASY": [], "MEDIUM": [], "HARD": []},
         "user_feedback_rewards": {"NO_AUTOMATIC_HINTS": [], "LIGHT_HINTS": [], "FULL_HINTS": []},
-        "personality_feedback": {"Socratic": [], "Narrative": [], "Direct": []},
+        "personality_feedback": {"Socratic": [], "Socratic Gamified": [], "Direct": [], "Direct Gamified": []},
         "response_quality_scores": [],
     })
     
@@ -1057,64 +1007,48 @@ def build_tutor_context(personality: str, pdf_ref=None, continuation_context: st
     else:
         quiz_diff_instruction = "QUIZ DIFFICULTY: MEDIUM - Ask questions requiring understanding and application."
     
-    if personality == "Socratic":
+    bp = base_personality(personality)
+    gamified = is_gamified(personality)
+
+    if bp == "Socratic":
         question_depth = st.session_state.get("question_depth", "DEEP_PROBE")
         hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
-        
+
         if question_depth == "DEEP_PROBE":
             depth_instruction = "QUESTION DEPTH: DEEP - Ask at least 2 follow-up why/how questions about the same concept before moving to the next learning point."
         else:
             depth_instruction = "QUESTION DEPTH: SHALLOW - Ask one quick understanding check per learning point, then advance if correct."
-        
+
         if hint_policy == "NO_AUTOMATIC_HINTS":
             hint_instruction = "HINT POLICY: Only provide hints if student explicitly asks 'can I get a hint?' or similar."
         elif hint_policy == "FULL_HINTS":
             hint_instruction = "HINT POLICY: After one wrong or weak answer, provide a detailed scaffolded hint pointing toward the answer."
         else:
             hint_instruction = "HINT POLICY: After one wrong answer, give a small nudge ('Think about...') without giving away the answer."
-        
+
         context = base_prompt.format(
             question_depth_instruction=depth_instruction,
             hint_policy_instruction=hint_instruction,
             quiz_difficulty_instruction=quiz_diff_instruction
         )
-    elif personality == "Narrative":
-        learning_points = get_current_learning_points()
-        if learning_points:
-            episode_list = "\n".join([f"Episode {i+1}: {point}" for i, point in enumerate(learning_points)])
-        else:
-            episode_list = "Episode 1-4: (Learning points will be provided)"
-        
-        context = base_prompt.format(
-            episode_list=episode_list,
-            quiz_difficulty_instruction=quiz_diff_instruction
-        )
-        
-        current_episode = st.session_state.get("narrative_episode", 1)
-        current_phase = st.session_state.get("narrative_episode_phase", "setup")
-        context += f"\n\nCURRENT STATE: Episode {current_episode}"
-        context += f"\nRemember: You are on Episode {current_episode} of 4. Stay focused on this episode's learning point."
     else:
         context = base_prompt.format(
             quiz_difficulty_instruction=quiz_diff_instruction
         )
-    
-    if personality == "Direct":
+
+    if bp == "Direct":
         context += "\n\nIMPORTANT: Only use [QUIZ] tags for the 3-question quiz at the end. Do not use [MINI-Q] tags."
-    elif personality == "Narrative":
-        context += "\n\nIMPORTANT: Use [MINI-Q] for episode engagement questions. Emit [MASTERED episode_X] when learner demonstrates understanding."
     else:
         context += "\n\nIMPORTANT: Use [MINI-Q] and [QUIZ] tags. Keep responses concise. NEVER repeat the exact same question twice."
-    
-    if personality == "Socratic":
-        context += "\n- Award +10 XP when the student shows reasoning or cites evidence."
-    elif personality == "Narrative":
-        context += "\n- Award +10 XP for historically accurate or empathetic responses and +5 XP for creative engagement."
-    else:
-        context += "\n- Award 25 XP for each correct [QUIZ] answer. Students must get 3/3 to master the subtopic."
-    
+
+    if gamified:
+        if bp == "Socratic":
+            context += "\n- Award +10 XP when the student shows reasoning or cites evidence."
+        else:
+            context += "\n- Award 25 XP for each correct [QUIZ] answer. Students must get 3/3 to master the subtopic."
+
     current_subtopic_key = st.session_state.get("current_subtopic")
-    if current_subtopic_key and personality != "Narrative":
+    if current_subtopic_key:
         for concept in LEARNING_CONCEPTS:
             for subtopic in concept.get("subtopics", []):
                 if subtopic["key"] == current_subtopic_key:
@@ -1141,7 +1075,7 @@ def build_tutor_context(personality: str, pdf_ref=None, continuation_context: st
     
     # Add last question tracking to prevent repeats
     last_question = st.session_state.get("last_question_asked")
-    if last_question and personality == "Socratic":
+    if last_question and bp == "Socratic":
         context += f"\n\nLAST QUESTION ASKED: \"{last_question}\"\nIMPORTANT: Do NOT ask this exact question again. If you need a follow-up, ask a DIFFERENT question about the same concept."
     
     if continuation_context:
@@ -1150,44 +1084,96 @@ def build_tutor_context(personality: str, pdf_ref=None, continuation_context: st
     return context
 
 
-def chat_with_tutor(model, personality: str, user_message: str, pdf_ref=None, continuation_prompt: str = None) -> str:
-    """Chat with the tutor model with defensive error handling."""
-    if model is None:
-        return "(Error: AI model not initialized. Please check your GEMINI_API_KEY configuration and try again.)"
+def chat_with_tutor(model_info, personality: str, user_message: str, pdf_ref=None, continuation_prompt: str = None) -> str:
+    """Chat with the tutor model with defensive error handling.
+    
+    Supports both Groq and Gemini providers.
+    """
+    if model_info is None:
+        return "(Error: AI model not initialized. Please check your GROQ_API_KEY or GEMINI_API_KEY configuration and try again.)"
+    
+    provider = model_info["provider"]
     
     try:
-        pdf_id = getattr(pdf_ref, "name", None) or getattr(pdf_ref, "uri", None)
-        chat = st.session_state.get("chat_session")
-        needs_reset = (
-            chat is None
-            or st.session_state.get("chat_session_personality") != personality
-            or st.session_state.get("chat_session_pdf_id") != pdf_id
-        )
+        # Build system context
+        system_context = build_tutor_context(personality, pdf_ref, continuation_prompt)
+        
+        if provider == "groq":
+            # Groq uses OpenAI-style chat completions
+            client = model_info["client"]
+            model_name = model_info["model"]
+            
+            # Build message history
+            messages = [{"role": "system", "content": system_context}]
+            
+            # Add conversation history
+            for msg in st.session_state.get("messages", []):
+                role = msg.role if isinstance(msg, Message) else msg.get("role")
+                content = msg.content if isinstance(msg, Message) else msg.get("content")
+                if role in ["user", "assistant"]:
+                    messages.append({"role": role, "content": content})
+            
+            # Add current message
+            if continuation_prompt:
+                user_message_with_context = f"{user_message}\n\n[SYSTEM NOTE: {continuation_prompt}]"
+                messages.append({"role": "user", "content": user_message_with_context})
+            else:
+                messages.append({"role": "user", "content": user_message})
+            
+            # Call Groq API
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2000,
+            )
+            
+            reply_text = response.choices[0].message.content
+            
+            if not reply_text or reply_text.strip() == "":
+                st.error("Tutor generated an empty response. Please try again.")
+                return "I'm having trouble generating a response right now. Could you please rephrase your question or try again?"
+            
+            return reply_text
+        
+        elif provider == "gemini":
+            # Gemini uses its own session-based approach
+            model = model_info["model"]
+            pdf_id = getattr(pdf_ref, "name", None) or getattr(pdf_ref, "uri", None)
+            chat = st.session_state.get("chat_session")
+            needs_reset = (
+                chat is None
+                or st.session_state.get("chat_session_personality") != personality
+                or st.session_state.get("chat_session_pdf_id") != pdf_id
+            )
 
-        if needs_reset:
-            system_context = build_tutor_context(personality, pdf_ref, continuation_prompt)
-            chat_history = [{"role": "user", "parts": [system_context]}]
-            chat = model.start_chat(history=chat_history)
-            st.session_state.chat_session = chat
-            st.session_state.chat_session_personality = personality
-            st.session_state.chat_session_pdf_id = pdf_id
+            if needs_reset:
+                chat_history = [{"role": "user", "parts": [system_context]}]
+                chat = model.start_chat(history=chat_history)
+                st.session_state.chat_session = chat
+                st.session_state.chat_session_personality = personality
+                st.session_state.chat_session_pdf_id = pdf_id
 
-        message_to_send = user_message
-        if continuation_prompt:
-            message_to_send = f"{user_message}\n\n[SYSTEM NOTE: {continuation_prompt}]"
+            message_to_send = user_message
+            if continuation_prompt:
+                message_to_send = f"{user_message}\n\n[SYSTEM NOTE: {continuation_prompt}]"
 
-        if pdf_ref:
-            response = chat.send_message([message_to_send, pdf_ref])
+            if pdf_ref:
+                response = chat.send_message([message_to_send, pdf_ref])
+            else:
+                response = chat.send_message(message_to_send)
+
+            reply_text = getattr(response, "text", "") or ""
+            
+            if not reply_text or reply_text.strip() == "":
+                st.error("Tutor generated an empty response. Please try again.")
+                return "I'm having trouble generating a response right now. Could you please rephrase your question or try again?"
+            
+            return reply_text
+        
         else:
-            response = chat.send_message(message_to_send)
-
-        reply_text = getattr(response, "text", "") or ""
-        
-        if not reply_text or reply_text.strip() == "":
-            st.error("Tutor generated an empty response. Please try again.")
-            return "I'm having trouble generating a response right now. Could you please rephrase your question or try again?"
-        
-        return reply_text
+            return f"Unknown provider: {provider}"
+    
     except Exception as e:
         st.session_state.chat_session = None
         st.error(f"Chat error: {e}")
@@ -1235,7 +1221,7 @@ def parse_tutor_response(response: str):
     return response, question_type, mastered_episode, subtopic_complete
 
 
-def ensure_initial_tutor_message(model):
+def ensure_initial_tutor_message(model_info):
     """Ensure intro message is sent only once, with defensive checks."""
     if st.session_state.intro_sent:
         return
@@ -1243,16 +1229,16 @@ def ensure_initial_tutor_message(model):
         st.session_state.intro_sent = True
         save_persisted_state()
         return
-    if model is None:
+    if model_info is None:
         return
 
     personality = st.session_state.personality
-    prompt = INTRO_PROMPTS.get(personality, INTRO_PROMPTS["Direct"])
+    prompt = INTRO_PROMPTS.get(base_personality(personality), INTRO_PROMPTS["Direct"])
 
     try:
         with st.spinner("Tutor is getting ready..."):
             reply = chat_with_tutor(
-                model,
+                model_info,
                 personality,
                 prompt,
                 st.session_state.pdf_file_ref,
@@ -1290,19 +1276,20 @@ def ensure_initial_tutor_message(model):
 
 def check_answer_quality(user_answer: str, question_type: str, personality: str):
     words = user_answer.strip().split()
+    bp = base_personality(personality)
     if len(words) < 2:
         return False, 0, ""
 
-    if personality == "Direct" and question_type == "quiz":
+    if bp == "Direct" and question_type == "quiz":
         if not st.session_state.get("quiz_mode"):
             st.session_state.quiz_mode = True
             st.session_state.quiz_score = 0
             st.session_state.quiz_total = 0
-        
+
         if len(words) >= 3:
             return True, 25, "Quiz question"
         return False, 0, ""
-    
+
     if question_type == "quiz":
         return True, 25, "Quiz mastery"
 
@@ -1319,20 +1306,9 @@ def check_answer_quality(user_answer: str, question_type: str, personality: str)
     if cleaned in exact_invalid or any(sub in cleaned for sub in substring_invalid):
         return False, 0, ""
 
-    if personality == "Socratic":
+    if bp == "Socratic":
         if word_count >= 6:
             return True, 10, "Thoughtful response"
-        return False, 0, ""
-
-    if personality == "Narrative":
-        empathy_keywords = {
-            "feel", "felt", "think", "imagine", "because", "worried", 
-            "afraid", "hope", "angry", "tired", "would", "choose", "decision"
-        }
-        if word_count >= 8 or any(keyword in lower_answer for keyword in empathy_keywords):
-            return True, 10, "Insightful historical perspective"
-        if word_count >= 4:
-            return True, 5, "Creative engagement"
         return False, 0, ""
 
     return False, 0, ""
@@ -1431,10 +1407,7 @@ def render_concept_tracker():
                     
                     display_point = point if len(point) <= 50 else point[:47] + "..."
                     
-                    if personality == "Narrative":
-                        episode_label = f"Ep{idx + 1}: "
-                    else:
-                        episode_label = ""
+                    episode_label = ""
                     
                     lp_html = f"<div style='margin-left: 1.5em; font-size: 0.85em; color: #555; margin-top: 0.3em;'><span style='color: {lp_color};'>{lp_icon}</span> {episode_label}{display_point}</div>"
                     st.markdown(lp_html, unsafe_allow_html=True)
@@ -1462,18 +1435,18 @@ def sidebar_nav():
         st.divider()
         
         if st.session_state.page == "Tutoring Chat":
-            st.markdown("### Tutor Personality")
-            personalities = ["Socratic", "Narrative", "Direct"]
-            if st.session_state.personality not in personalities:
+            st.markdown("### Tutor Mode")
+            if st.session_state.personality not in PERSONALITIES:
                 st.session_state.personality = "Socratic"
-            
+
             descriptions = {
-                "Socratic": "Guides you with layered questions",
-                "Narrative": "Immerses you in historical episodes",
-                "Direct": "Delivers clear, structured lessons"
+                "Socratic": "Guided questioning, no XP",
+                "Socratic Gamified": "Guided questioning + XP & levels",
+                "Direct": "Structured lessons, no XP",
+                "Direct Gamified": "Structured lessons + XP & levels",
             }
-            
-            for p in personalities:
+
+            for p in PERSONALITIES:
                 is_active = st.session_state.personality == p
                 button_type = "primary" if is_active else "secondary"
                 if st.button(f"{p}", use_container_width=True, type=button_type, key=f"personality_{p}"):
@@ -1487,24 +1460,18 @@ def sidebar_nav():
                         st.session_state.question_type = None
                         st.session_state.current_topic = "General Tutoring"
                         st.session_state.intro_sent = False
-                        st.session_state.narrative_episode = 1
-                        st.session_state.narrative_episode_phase = "setup"
-                        st.session_state.message_feedback = {}  # Reset feedback on personality change
-                        st.session_state.last_question_asked = None  # Reset question tracking
+                        st.session_state.message_feedback = {}
+                        st.session_state.last_question_asked = None
                         save_persisted_state()
                         st.rerun()
-            
+
             st.caption(descriptions[st.session_state.personality])
-            
-            if st.session_state.personality == "Narrative":
-                current_ep = st.session_state.get("narrative_episode", 1)
-                st.caption(f"Current: Episode {current_ep} of 4")
-            
             st.divider()
         
-        st.metric("Level", st.session_state.level)
-        st.metric("XP", st.session_state.xp)
-        st.progress(level_progress(st.session_state.xp))
+        if is_gamified():
+            st.metric("Level", st.session_state.level)
+            st.metric("XP", st.session_state.xp)
+            st.progress(level_progress(st.session_state.xp))
         st.markdown("### Silk Road Progress")
         render_concept_tracker()
         
@@ -1542,8 +1509,16 @@ def sidebar_nav():
             st.markdown("#### Profile")
             username = st.session_state.get("username", "Guest")
             st.markdown(f"**{username}**")
-            st.caption(f"Level {st.session_state.level} • {st.session_state.xp} XP")
+            if is_gamified():
+                st.caption(f"Level {st.session_state.level} • {st.session_state.xp} XP")
             if st.button("Sign Out", use_container_width=True, type="secondary"):
+                # Clear the JSON file to prevent auto-login
+                try:
+                    if STATE_FILE.exists():
+                        STATE_FILE.unlink()
+                except Exception:
+                    pass
+                # Clear all session state
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
                 st.rerun()
@@ -1566,29 +1541,58 @@ def page_home():
                 level_progress(st.session_state.xp),
                 text=f"{current}/{NEXT_LEVEL_XP} • {remaining} XP to next level",
             )
-            questions_total = len([m for m in st.session_state.messages if m.role == "user"])
-            mini_qs = len([
-                m for m in st.session_state.messages
-                if hasattr(m, "metadata") and m.metadata and m.metadata.get("type") == "mini"
-            ])
-            quizzes = len([
-                m for m in st.session_state.messages
-                if hasattr(m, "metadata") and m.metadata and m.metadata.get("type") == "quiz"
-            ])
+            
+            # Real stats from actual activity
+            questions_answered = len([m for m in st.session_state.messages if m.role == "user"])
+            mini_qs_completed = sum(1 for m in st.session_state.messages 
+                                   if hasattr(m, "metadata") and m.metadata 
+                                   and m.metadata.get("type") == "mini" 
+                                   and m.metadata.get("xp_awarded", 0) > 0)
+            quizzes_completed = sum(1 for m in st.session_state.messages 
+                                   if hasattr(m, "metadata") and m.metadata 
+                                   and m.metadata.get("type") == "quiz" 
+                                   and m.metadata.get("xp_awarded", 0) > 0)
+            
             s1, s2, s3 = st.columns(3)
-            s1.metric("Questions", questions_total)
-            s2.metric("Mini-Qs", mini_qs)
-            s3.metric("Quizzes", quizzes)
+            s1.metric("Questions Answered", questions_answered, help="Total questions you've answered")
+            s2.metric("Mini-Qs Earned", mini_qs_completed, help="Mini-questions where you earned XP")
+            s3.metric("Quizzes Passed", quizzes_completed, help="Quiz questions answered correctly")
 
     with col_side:
         with st.container(border=True):
-            st.subheader("Badges")
-            badges = ["Starter"]
+            st.subheader("Badges Earned")
+            badges = []
+            
+            # Badges based on actual achievements
             if st.session_state.level >= 2:
-                badges.append("Focused Learner")
+                badges.append("🎯 Focused Learner")
             if st.session_state.level >= 5:
-                badges.append("Knowledge Seeker")
-            st.write("\n".join(badges))
+                badges.append("📚 Knowledge Seeker")
+            if st.session_state.xp >= 100:
+                badges.append("💯 Century Club")
+            
+            # Check if user has completed any subtopics
+            mastered_count = sum(1 for progress in st.session_state.subtopic_progress.values() 
+                               if progress.get("mastered", False))
+            if mastered_count >= 1:
+                badges.append("✅ First Mastery")
+            if mastered_count >= 3:
+                badges.append("🌟 Master Scholar")
+            
+            # Check for engagement badges
+            questions_answered = len([m for m in st.session_state.messages if m.role == "user"])
+            if questions_answered >= 10:
+                badges.append("💬 Engaged Learner")
+            if questions_answered >= 50:
+                badges.append("🚀 Learning Champion")
+            
+            if badges:
+                for badge in badges:
+                    st.write(badge)
+            else:
+                st.caption("🏆 Earn badges by learning with your tutor!")
+                st.caption("• Reach level 2 for your first badge")
+                st.caption("• Complete subtopics to unlock more")
         st.markdown("\n")
         with st.container(border=True):
             st.subheader("Next goals")
@@ -1604,45 +1608,74 @@ def page_home():
                 st.caption(f"Based on {feedback_stats['total']} ratings")
 
     st.markdown("---")
-    st.subheader("Daily actions")
-    st.caption("Use these quick actions to keep your streak alive and unlock bonuses.")
-    a1, a2, a3, a4 = st.columns(4)
+    st.subheader("Daily Learning")
+    st.caption("Start your learning journey and build your daily streak!")
+    
+    # Daily streak tracker (automatic, not clickable)
+    st.markdown("### 🔥 Daily Streak")
+    col_streak1, col_streak2 = st.columns([1, 3])
+    with col_streak1:
+        st.metric("Current Streak", "0 days", help="Complete at least one learning session daily to build your streak")
+    with col_streak2:
+        st.caption("💡 **Tip:** Answer questions with your tutor to maintain your streak and earn XP!")
+    
+    st.markdown("\n")
+    st.markdown("### Quick Start Learning")
+    a1, a2, a3 = st.columns(3)
     with a1:
-        if st.button("Practice +15 XP", use_container_width=True, type="primary"):
-            award_xp(15, "Practice completed")
+        if st.button("🧠 Start Practice Session", use_container_width=True, type="primary"):
+            st.session_state.page = "Tutoring Chat"
+            st.session_state.challenge_active = False
+            st.toast("Let's practice! Answer questions to earn XP.", icon="🎓")
+            st.rerun()
     with a2:
-        if st.button("Lesson +30 XP", use_container_width=True):
-            award_xp(30, "Lesson completed")
+        if st.button("📚 Begin New Lesson", use_container_width=True):
+            st.session_state.page = "Tutoring Chat"
+            st.session_state.challenge_active = False
+            # Reset to start fresh lesson
+            st.session_state.messages = []
+            st.session_state.intro_sent = False
+            st.session_state.chat_session = None
+            st.toast("Starting new lesson! Engage with the tutor to earn XP.", icon="📖")
+            st.rerun()
     with a3:
-        if st.button("Streak +10 XP", use_container_width=True):
-            award_xp(10, "Streak maintained")
-    with a4:
-        if st.button("Challenge Question", use_container_width=True, help="Navigate to tutor and receive a tough question for bonus XP"):
+        if st.button("⚡ Challenge Question", use_container_width=True):
             st.session_state.page = "Tutoring Chat"
             st.session_state.challenge_active = True
-            st.toast("Challenge armed! Head to Tutoring Chat to get your tough question.", icon="⚡")
+            st.toast("Challenge armed! Answer correctly for bonus XP.", icon="⚡")
             save_persisted_state()
             st.rerun()
 
-    st.info("Tip: Chat with your AI tutor and answer questions to earn XP!")
+    st.info(
+        "💎 **Earn XP by learning!** Use a Gamified tutor mode and answer questions:\n"
+        "- Socratic Gamified: 10 XP per thoughtful answer\n"
+        "- Direct Gamified: 25 XP per quiz question\n"
+        "- Challenge bonus: +10 XP extra"
+    )
 
 
 def page_chat():
     st.title("Tutoring Chat")
     personality = st.session_state.personality
     
-    if personality == "Narrative":
-        current_ep = st.session_state.get("narrative_episode", 1)
-        st.caption(f"Learning with **{personality}** tutor • Episode {current_ep} of 4 • Answer questions to earn XP")
-    else:
+    if is_gamified(personality):
         st.caption(f"Learning with **{personality}** tutor • Answer questions to earn XP")
+    else:
+        st.caption(f"Learning with **{personality}** tutor")
     
     st.markdown(f"**Current Topic:** {st.session_state.current_topic}")
 
-    model = get_gemini_model()
-    if model is None:
-        st.error("Gemini API key not configured. Please set GEMINI_API_KEY in your environment or Streamlit secrets.")
+    model_info = get_ai_model()
+    if model_info is None:
+        st.error("AI API key not configured. Please set GROQ_API_KEY or GEMINI_API_KEY in your environment or Streamlit secrets.")
         return
+    
+    # Show which provider is being used
+    provider = model_info.get("provider", "unknown")
+    if provider == "groq":
+        st.caption("🚀 Using Groq (Llama 3.1 70B)")
+    elif provider == "gemini":
+        st.caption("✨ Using Google Gemini")
 
     with st.expander("Upload Curriculum (PDF)", expanded=not st.session_state.pdf_uploaded):
         uploaded_file = st.file_uploader(
@@ -1723,7 +1756,7 @@ def page_chat():
             
             try:
                 with st.spinner("Preparing challenge question..."):
-                    reply = chat_with_tutor(model, personality, challenge_prompt, st.session_state.pdf_file_ref)
+                    reply = chat_with_tutor(model_info, personality, challenge_prompt, st.session_state.pdf_file_ref)
                 
                 if not reply or reply.strip() == "":
                     reply = "Here's a challenge question: How did the geographic, political, and cultural factors of the Silk Road interact to shape the flow of trade and ideas between East and West?"
@@ -1751,25 +1784,24 @@ def page_chat():
     st.markdown("##### Quick starts:")
     pp1, pp2, pp3, pp4 = st.columns([1.4, 1.6, 1.8, 2])
     
+    _socratic_starts = [
+        ("Northern Route", "Guide me through the northern Silk Road route with questions."),
+        ("Trade Goods", "Help me reason through what goods were traded on the Silk Road."),
+        ("Cultural Exchange", "Ask me guiding questions about cultural exchange on the Silk Road.")
+    ]
+    _direct_starts = [
+        ("Silk Road Origins", "Teach me about the origins and expansion of the Silk Road."),
+        ("Route Comparison", "Walk me through the northern vs. southern Silk Road routes."),
+        ("Political Powers", "Give me a clear outline of empires controlling the Silk Road.")
+    ]
     quick_starts = {
-        "Socratic": [
-            ("Northern Route", "Guide me through the northern Silk Road route with questions."),
-            ("Trade Goods", "Help me reason through what goods were traded on the Silk Road."),
-            ("Cultural Exchange", "Ask me guiding questions about cultural exchange on the Silk Road.")
-        ],
-        "Narrative": [
-            ("Episode 1: Zhang Qian", "Begin Episode 1: Put me in Zhang Qian's shoes as he receives his mission from the Han Emperor."),
-            ("Episode 2: The Journey", "Start Episode 2: I'm ready to experience the dangers of the journey west."),
-            ("Next Episode", "Continue to the next episode in our story.")
-        ],
-        "Direct": [
-            ("Silk Road Origins", "Teach me about the origins and expansion of the Silk Road."),
-            ("Route Comparison", "Walk me through the northern vs. southern Silk Road routes."),
-            ("Political Powers", "Give me a clear outline of empires controlling the Silk Road.")
-        ]
+        "Socratic": _socratic_starts,
+        "Socratic Gamified": _socratic_starts,
+        "Direct": _direct_starts,
+        "Direct Gamified": _direct_starts,
     }
-    
-    starts = quick_starts.get(personality, quick_starts["Direct"])
+
+    starts = quick_starts.get(personality, _direct_starts)
     with pp1:
         if st.button(starts[0][0], use_container_width=True):
             chip_query = starts[0][1]
@@ -1787,7 +1819,7 @@ def page_chat():
             chip_query = f"Give me a fresh angle on {active_concept['title']} with a question to get started."
             chip_topic = active_concept["title"]
     
-    ensure_initial_tutor_message(model)
+    ensure_initial_tutor_message(model_info)
 
     # Render chat messages with feedback buttons
     with st.container(border=True):
@@ -1827,7 +1859,7 @@ def page_chat():
                                 
                                 try:
                                     with st.spinner("Tutor is thinking..."):
-                                        reply = chat_with_tutor(model, personality, edited_text, st.session_state.pdf_file_ref)
+                                        reply = chat_with_tutor(model_info, personality, edited_text, st.session_state.pdf_file_ref)
                                     
                                     if not reply or reply.strip() == "":
                                         reply = "I'm having trouble generating a response. Could you please try rephrasing your question?"
@@ -1836,10 +1868,6 @@ def page_chat():
                                     reply = f"I encountered an error: {e}. Please try again."
                                 
                                 clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
-                                
-                                if mastered_episode is not None and personality == "Narrative":
-                                    mark_episode_mastered(mastered_episode)
-                                    st.toast(f"Episode {mastered_episode} mastered!", icon="✅")
                                 
                                 if subtopic_complete:
                                     mark_subtopic_mastered(st.session_state.current_subtopic)
@@ -1927,7 +1955,7 @@ def page_chat():
                 context = {"level": st.session_state.level, "xp": st.session_state.xp}
                 st.session_state.quiz_difficulty = select_bandit_action("quiz_difficulty", context)
             
-            if personality == "Socratic":
+            if base_personality(personality) == "Socratic":
                 if is_valid and xp > 0:
                     if response_time < 90:
                         depth_reward = 1.0
@@ -1971,9 +1999,7 @@ def page_chat():
                 
                 st.session_state.messages[-1].metadata = metadata
                 
-                if personality == "Narrative":
-                    continuation_prompt = f"The learner answered well and earned {xp_awarded} XP. Continue naturally with the story - acknowledge their answer briefly and move to the next part of the episode or the next episode. DO NOT repeat the question you just asked."
-                elif personality == "Socratic":
+                if base_personality(personality) == "Socratic":
                     continuation_prompt = f"The learner gave a thoughtful response and earned {xp_awarded} XP. Acknowledge their thinking and continue to the next question or learning point naturally. IMPORTANT: Move forward - do not ask the exact same question again. If they've grasped this concept, move to the NEXT learning point. If they need more depth, ask a DIFFERENT follow-up question."
                 else:
                     continuation_prompt = f"The learner answered correctly and earned {xp_awarded} XP. Provide brief positive feedback and continue with the next quiz question or learning section."
@@ -1994,7 +2020,7 @@ def page_chat():
 
         try:
             with st.spinner("Tutor is thinking..."):
-                reply = chat_with_tutor(model, personality, query, st.session_state.pdf_file_ref, continuation_prompt)
+                reply = chat_with_tutor(model_info, personality, query, st.session_state.pdf_file_ref, continuation_prompt)
             
             if not reply or reply.strip() == "":
                 st.error("Tutor generated an empty response")
@@ -2004,10 +2030,6 @@ def page_chat():
             reply = f"I encountered an error while processing your request: {e}. Please try again."
 
         clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
-        
-        if mastered_episode is not None and personality == "Narrative":
-            mark_episode_mastered(mastered_episode)
-            st.toast(f"Episode {mastered_episode} mastered!", icon="✅")
         
         if subtopic_complete:
             mark_subtopic_mastered(st.session_state.current_subtopic)
@@ -2031,9 +2053,9 @@ def page_chat():
         
         st.session_state.message_count_for_lp_update += 1
         
-        if personality == "Direct" and question_type == "quiz":
+        if base_personality(personality) == "Direct" and question_type == "quiz":
             update_learning_point_progress()
-        elif personality in ["Socratic", "Narrative"] and st.session_state.message_count_for_lp_update >= 3:
+        elif base_personality(personality) == "Socratic" and st.session_state.message_count_for_lp_update >= 3:
             update_learning_point_progress()
             st.session_state.message_count_for_lp_update = 0
             if check_learning_point_understanding():
@@ -2056,7 +2078,7 @@ def page_chat():
         st.rerun()
 
     # Bottom section with Continue buttons for Direct, Reset, and status
-    if personality == "Direct" and len(st.session_state.messages) > 1:
+    if base_personality(personality) == "Direct" and len(st.session_state.messages) > 1:
         col_cont1, col_cont2, col_cont3 = st.columns([1, 1, 1])
         with col_cont1:
             if st.button("Continue", use_container_width=True, type="primary", key="continue_btn_bottom"):
@@ -2066,7 +2088,7 @@ def page_chat():
                 
                 try:
                     with st.spinner("Tutor is thinking..."):
-                        reply = chat_with_tutor(model, personality, query, st.session_state.pdf_file_ref)
+                        reply = chat_with_tutor(model_info, personality, query, st.session_state.pdf_file_ref)
                     
                     if not reply or reply.strip() == "":
                         reply = "Let me continue with the next section of our lesson..."
@@ -2096,7 +2118,7 @@ def page_chat():
                 
                 try:
                     with st.spinner("Preparing quiz..."):
-                        reply = chat_with_tutor(model, personality, query, st.session_state.pdf_file_ref)
+                        reply = chat_with_tutor(model_info, personality, query, st.session_state.pdf_file_ref)
                     
                     if not reply or reply.strip() == "":
                         reply = "[QUIZ] Question 1: What was the primary purpose of Zhang Qian's mission to the West?"
@@ -2130,76 +2152,6 @@ def page_chat():
                 st.session_state.intro_sent = False
                 st.session_state.challenge_active = False
                 st.session_state.topic_refresh_counter = 0
-                st.session_state.narrative_episode = 1
-                st.session_state.narrative_episode_phase = "setup"
-                st.session_state.message_feedback = {}
-                st.session_state.last_question_asked = None
-                save_persisted_state()
-                st.rerun()
-    elif personality == "Narrative" and len(st.session_state.messages) > 1:
-        col_ep1, col_ep2, col_ep3 = st.columns([1, 1, 1])
-        with col_ep1:
-            current_ep = st.session_state.get("narrative_episode", 1)
-            if st.button(f"Next Episode", use_container_width=True, type="primary", key="next_episode_btn"):
-                query = f"I'm ready for Episode {current_ep + 1 if current_ep < 4 else 'the chapter recap'}."
-                st.session_state.messages.append(Message(role="user", content=query, metadata=None))
-                save_persisted_state()
-                
-                try:
-                    with st.spinner("Preparing next episode..."):
-                        reply = chat_with_tutor(model, personality, query, st.session_state.pdf_file_ref)
-                    
-                    if not reply or reply.strip() == "":
-                        reply = "Let me continue with the next episode of our journey..."
-                except Exception as e:
-                    st.error(f"Chat error: {e}")
-                    reply = f"I encountered an error: {e}. Please try again."
-                
-                clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
-                
-                if mastered_episode is not None:
-                    mark_episode_mastered(mastered_episode)
-                    st.toast(f"Episode {mastered_episode} mastered!", icon="✅")
-                
-                if subtopic_complete:
-                    mark_subtopic_mastered(st.session_state.current_subtopic)
-                    st.toast("Chapter complete!", icon="🎉")
-                
-                msg_metadata = {
-                    "question_type": question_type,
-                    "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
-                    "personality": personality,
-                }
-                st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata=msg_metadata))
-                if question_type:
-                    st.session_state.awaiting_answer = True
-                    st.session_state.question_type = question_type
-                    st.session_state.current_hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
-                    st.session_state.hint_given_this_question = False
-                save_persisted_state()
-                st.rerun()
-        with col_ep2:
-            if st.button("Switch to Direct Quiz", use_container_width=True, key="switch_direct_btn"):
-                st.session_state.personality = "Direct"
-                st.session_state.chat_session = None
-                st.session_state.intro_sent = False
-                st.toast("Switched to Direct tutor for mastery quiz!", icon="🎯")
-                save_persisted_state()
-                st.rerun()
-        with col_ep3:
-            if st.button("Reset chat", use_container_width=True, type="secondary"):
-                st.session_state.messages = []
-                st.session_state.awaiting_answer = False
-                st.session_state.question_type = None
-                st.session_state.current_topic = get_concept()["title"]
-                st.session_state.chat_session = None
-                st.session_state.chat_session_personality = None
-                st.session_state.chat_session_pdf_id = None
-                st.session_state.intro_sent = False
-                st.session_state.challenge_active = False
-                st.session_state.topic_refresh_counter = 0
-                st.session_state.narrative_episode = 1
-                st.session_state.narrative_episode_phase = "setup"
                 st.session_state.message_feedback = {}
                 st.session_state.last_question_asked = None
                 save_persisted_state()
@@ -2218,8 +2170,6 @@ def page_chat():
                 st.session_state.intro_sent = False
                 st.session_state.challenge_active = False
                 st.session_state.topic_refresh_counter = 0
-                st.session_state.narrative_episode = 1
-                st.session_state.narrative_episode_phase = "setup"
                 st.session_state.message_feedback = {}
                 st.session_state.last_question_asked = None
                 save_persisted_state()
@@ -2227,31 +2177,32 @@ def page_chat():
         with col_b:
             if st.session_state.awaiting_answer:
                 q_type = st.session_state.question_type
-                if q_type == "mini":
-                    if personality == "Socratic":
+                if is_gamified(personality):
+                    if q_type == "mini":
                         xp_label = "10 XP for strong reasoning"
-                    elif personality == "Narrative":
-                        xp_label = "5-10 XP for story insight"
+                    else:
+                        xp_label = "25 XP for quiz question"
+                    st.info(f"Awaiting answer • {xp_label}")
                 else:
-                    xp_label = "25 XP for quiz question"
-                st.info(f"Awaiting answer • {xp_label}")
+                    st.info("Awaiting answer")
             else:
-                if st.session_state.challenge_active:
+                if st.session_state.challenge_active and is_gamified(personality):
                     st.caption("Challenge armed: next correct answer earns +10 bonus XP on top of regular rewards.")
-                else:
-                    st.caption("Socratic Mini-Q: 10 XP • Narrative Mini-Q: 5-10 XP • Direct Quiz: 25 XP per question")
-    
-    if personality == "Direct":
+                elif is_gamified(personality):
+                    bp = base_personality(personality)
+                    if bp == "Socratic":
+                        st.caption("Mini-Q: 10 XP per thoughtful answer • Quiz: 25 XP")
+                    else:
+                        st.caption("Quiz: 25 XP per correct answer")
+
+    if base_personality(personality) == "Direct":
         if st.session_state.awaiting_answer:
-            st.info(f"Awaiting quiz answer • 25 XP per correct answer")
+            if is_gamified(personality):
+                st.info("Awaiting quiz answer • 25 XP per correct answer")
+            else:
+                st.info("Awaiting quiz answer")
         else:
             st.caption("Use 'Continue' to advance through the lesson, or type questions anytime")
-    elif personality == "Narrative":
-        current_ep = st.session_state.get("narrative_episode", 1)
-        if st.session_state.awaiting_answer:
-            st.info(f"Episode {current_ep} • Awaiting your response • 5-10 XP for engagement")
-        else:
-            st.caption(f"Episode {current_ep} of 4 • Use 'Next Episode' to advance or type to continue the story")
 
 
 def apply_styles():
@@ -2433,22 +2384,27 @@ def show_login_page():
             st.session_state.username = username.strip()
             st.session_state.db_state_loaded = False
             save_persisted_state()
-            st.success("Signed in successfully")
+            st.success(f"✅ Signed in successfully as {username.strip()}!")
             st.rerun()
         else:
-            st.error("Invalid username or password.")
+            st.error(f"❌ Invalid username or password. Please check your credentials and try again.")
     
     if register and username and password:
-        created = db.create_user(username.strip(), password)
-        if created:
-            st.session_state.user_id = created
-            st.session_state.username = username.strip()
-            st.session_state.db_state_loaded = False
-            save_persisted_state()
-            st.success("Account created and signed in.")
-            st.rerun()
+        if len(username.strip()) < 3:
+            st.error("Username must be at least 3 characters long.")
+        elif len(password) < 6:
+            st.error("Password must be at least 6 characters long.")
         else:
-            st.error("Could not create account (username may already exist).")
+            created = db.create_user(username.strip(), password)
+            if created:
+                st.session_state.user_id = created
+                st.session_state.username = username.strip()
+                st.session_state.db_state_loaded = False
+                save_persisted_state()
+                st.success(f"🎉 Account created and signed in as {username.strip()}!")
+                st.rerun()
+            else:
+                st.error(f"❌ Could not create account. Username '{username.strip()}' may already exist.")
 
 
 def main():
@@ -2498,7 +2454,7 @@ def main():
                         continue
                     if k in ("xp", "level", "concept_progress", "subtopic_progress", "learning_point_progress", 
                              "current_concept", "current_subtopic", "current_topic", "personality", 
-                             "challenge_active", "intro_sent", "narrative_episode", "narrative_episode_phase",
+                             "challenge_active", "intro_sent",
                              "hint_policy", "question_depth", "quiz_difficulty", "bandit_stats", "message_feedback"):
                         st.session_state[k] = v
                 
