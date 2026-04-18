@@ -1709,9 +1709,9 @@ def page_chat():
                     st.success(f"PDF uploaded: {uploaded_file.name}")
                     st.rerun()
     
-    local_pdf = Path("/Users/alishajain/Gamified_app/Unit 2_ 2.1-2.7.pdf")
+    local_pdf = Path("/Users/alishajain/Gamified_app/silk_roads.pdf")
     if local_pdf.exists() and not st.session_state.pdf_uploaded:
-        if st.button("Load Unit 2 Curriculum (2.1-2.7)"):
+        if st.button("Load Silk Roads Curriculum"):
             with st.spinner("Loading curriculum..."):
                 pdf_ref = upload_pdf_to_gemini(str(local_pdf))
                 if pdf_ref:
