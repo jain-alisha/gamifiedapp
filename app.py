@@ -1353,66 +1353,79 @@ def render_feedback_buttons(message_idx: int):
 
 def render_concept_tracker():
     concept = LEARNING_CONCEPTS[0]
-    personality = st.session_state.personality
-    
-    st.markdown(f"**{concept['title']}**")
-    
+
+    rows = []
     for subtopic in concept["subtopics"]:
         key = subtopic["key"]
         progress = st.session_state.get("subtopic_progress", {}).get(key, {
             "unlocked": subtopic.get("unlocked", False),
             "mastered": subtopic.get("mastered", False)
         })
-        
         is_current = key == st.session_state.get("current_subtopic")
-        
+        learning_points = subtopic.get("learning_points", [])
+        lp_progress = st.session_state.get("learning_point_progress", {}).get(key, {})
+        total = len(learning_points)
+        completed = sum(1 for i in range(total) if lp_progress.get(f"lp_{i}") == "completed")
+        active_idx = next((i for i in range(total) if lp_progress.get(f"lp_{i}") == "active"), None)
+        rows.append((subtopic, key, progress, is_current, learning_points, total, completed, active_idx))
+
+    html_parts = ["<div style='font-size:0.82em;line-height:1.6;'>"]
+    for subtopic, key, progress, is_current, learning_points, total, completed, active_idx in rows:
         if progress.get("mastered"):
-            state_class = "concept-chip mastered"
-            icon = "●"
-            color = "green"
+            icon = "✅"
+            title_color = "#2e7d32"
+            bg = "#f1f8f1"
+            border = "#a5d6a7"
         elif is_current:
-            state_class = "concept-chip active"
-            icon = "●"
-            color = "yellow"
-        elif not progress.get("unlocked"):
-            state_class = "concept-chip locked"
-            icon = "●"
-            color = "gray"
+            icon = "▶"
+            title_color = "#1565c0"
+            bg = "#e8f0fe"
+            border = "#90caf9"
+        elif progress.get("unlocked"):
+            icon = "○"
+            title_color = "#555"
+            bg = "#fafafa"
+            border = "#ddd"
         else:
-            state_class = "concept-chip available"
-            icon = "●"
-            color = "blue"
-        
-        label = f"<span style='color: {color};'>{icon}</span> <strong>{subtopic['title']}</strong>"
-        st.markdown(f"<div class='{state_class}'>{label}</div>", unsafe_allow_html=True)
-        
-        if progress.get("unlocked") or is_current:
-            learning_points = subtopic.get("learning_points", [])
-            if learning_points:
-                lp_progress = st.session_state.get("learning_point_progress", {}).get(key, {})
-                
-                for idx, point in enumerate(learning_points):
-                    lp_key = f"lp_{idx}"
-                    lp_status = lp_progress.get(lp_key, "locked")
-                    
-                    if lp_status == "completed":
-                        lp_icon = "●"
-                        lp_color = "green"
-                    elif lp_status == "active":
-                        lp_icon = "●"
-                        lp_color = "yellow"
-                    else:
-                        lp_icon = "●"
-                        lp_color = "lightgray"
-                    
-                    display_point = point if len(point) <= 50 else point[:47] + "..."
-                    
-                    episode_label = ""
-                    
-                    lp_html = f"<div style='margin-left: 1.5em; font-size: 0.85em; color: #555; margin-top: 0.3em;'><span style='color: {lp_color};'>{lp_icon}</span> {episode_label}{display_point}</div>"
-                    st.markdown(lp_html, unsafe_allow_html=True)
-        
-        st.markdown("<div style='margin-bottom: 0.8em;'></div>", unsafe_allow_html=True)
+            icon = "🔒"
+            title_color = "#aaa"
+            bg = "#f5f5f5"
+            border = "#eee"
+
+        html_parts.append(
+            f"<div style='border:1px solid {border};border-radius:6px;padding:6px 8px;margin-bottom:6px;background:{bg};'>"
+            f"<div style='color:{title_color};font-weight:600;'>{icon} {subtopic['title']}</div>"
+        )
+
+        if (progress.get("unlocked") or is_current) and total > 0:
+            pct = int(completed / total * 100)
+            bar_filled = "#4caf50" if progress.get("mastered") else "#5dade2"
+            html_parts.append(
+                f"<div style='margin-top:4px;display:flex;align-items:center;gap:6px;'>"
+                f"<div style='flex:1;background:#e0e0e0;border-radius:4px;height:5px;'>"
+                f"<div style='width:{pct}%;background:{bar_filled};height:5px;border-radius:4px;'></div></div>"
+                f"<span style='color:#777;font-size:0.9em;white-space:nowrap;'>{completed}/{total}</span>"
+                f"</div>"
+            )
+            for idx, point in enumerate(learning_points):
+                lp_key = f"lp_{idx}"
+                status = lp_progress.get(lp_key, "locked")
+                if status == "completed":
+                    dot = "✓"; dot_color = "#4caf50"
+                elif status == "active":
+                    dot = "→"; dot_color = "#1565c0"
+                else:
+                    dot = "·"; dot_color = "#bbb"
+                short = point if len(point) <= 42 else point[:39] + "…"
+                html_parts.append(
+                    f"<div style='margin-left:1em;margin-top:2px;color:#666;'>"
+                    f"<span style='color:{dot_color};font-weight:bold;'>{dot}</span> {short}</div>"
+                )
+
+        html_parts.append("</div>")
+
+    html_parts.append("</div>")
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
 
 
 def sidebar_nav():
@@ -1449,21 +1462,30 @@ def sidebar_nav():
             for p in PERSONALITIES:
                 is_active = st.session_state.personality == p
                 button_type = "primary" if is_active else "secondary"
-                if st.button(f"{p}", use_container_width=True, type=button_type, key=f"personality_{p}"):
-                    if p != st.session_state.personality:
-                        st.session_state.personality = p
-                        st.session_state.chat_session = None
-                        st.session_state.chat_session_personality = None
-                        st.session_state.chat_session_pdf_id = None
-                        st.session_state.messages = []
-                        st.session_state.awaiting_answer = False
-                        st.session_state.question_type = None
-                        st.session_state.current_topic = "General Tutoring"
-                        st.session_state.intro_sent = False
-                        st.session_state.message_feedback = {}
-                        st.session_state.last_question_asked = None
-                        save_persisted_state()
-                        st.rerun()
+                ind_col, btn_col = st.columns([0.06, 0.94])
+                with ind_col:
+                    if is_active:
+                        st.markdown(
+                            "<div style='background:#1565c0;width:3px;height:34px;"
+                            "border-radius:2px;margin-top:3px;'></div>",
+                            unsafe_allow_html=True
+                        )
+                with btn_col:
+                    _clicked = st.button(f"{p}", use_container_width=True, type=button_type, key=f"personality_{p}")
+                if _clicked and p != st.session_state.personality:
+                    st.session_state.personality = p
+                    st.session_state.chat_session = None
+                    st.session_state.chat_session_personality = None
+                    st.session_state.chat_session_pdf_id = None
+                    st.session_state.messages = []
+                    st.session_state.awaiting_answer = False
+                    st.session_state.question_type = None
+                    st.session_state.current_topic = "General Tutoring"
+                    st.session_state.intro_sent = False
+                    st.session_state.message_feedback = {}
+                    st.session_state.last_question_asked = None
+                    save_persisted_state()
+                    st.rerun()
 
             st.caption(descriptions[st.session_state.personality])
             st.divider()
@@ -2053,10 +2075,8 @@ def page_chat():
         
         st.session_state.message_count_for_lp_update += 1
         
-        if base_personality(personality) == "Direct" and question_type == "quiz":
-            update_learning_point_progress()
-        elif base_personality(personality) == "Socratic" and st.session_state.message_count_for_lp_update >= 3:
-            update_learning_point_progress()
+        update_learning_point_progress()
+        if base_personality(personality) == "Socratic" and st.session_state.message_count_for_lp_update >= 3:
             st.session_state.message_count_for_lp_update = 0
             if check_learning_point_understanding():
                 st.toast("Learning point mastered!", icon="✓")
