@@ -1356,43 +1356,77 @@ def render_feedback_buttons(message_idx: int):
 
 def render_concept_tracker():
     concept = LEARNING_CONCEPTS[0]
-    html_parts = ["<div style='font-size:0.82em;line-height:1.6;'>"]
+
+    rows = []
     for subtopic in concept["subtopics"]:
         key = subtopic["key"]
         progress = st.session_state.get("subtopic_progress", {}).get(key, {
             "unlocked": subtopic.get("unlocked", False),
-            "mastered": subtopic.get("mastered", False),
+            "mastered": subtopic.get("mastered", False)
         })
         is_current = key == st.session_state.get("current_subtopic")
+        learning_points = subtopic.get("learning_points", [])
         lp_progress = st.session_state.get("learning_point_progress", {}).get(key, {})
-        total = len(subtopic.get("learning_points", []))
+        total = len(learning_points)
         completed = sum(1 for i in range(total) if lp_progress.get(f"lp_{i}") == "completed")
+        active_idx = next((i for i in range(total) if lp_progress.get(f"lp_{i}") == "active"), None)
+        rows.append((subtopic, key, progress, is_current, learning_points, total, completed, active_idx))
 
+    html_parts = ["<div style='font-size:0.82em;line-height:1.6;'>"]
+    for subtopic, key, progress, is_current, learning_points, total, completed, active_idx in rows:
         if progress.get("mastered"):
-            icon, title_color, bg, border = "✅", "#2e7d32", "#f1f8f1", "#a5d6a7"
+            icon = "✅"
+            title_color = "#2e7d32"
+            bg = "#f1f8f1"
+            border = "#a5d6a7"
         elif is_current:
-            icon, title_color, bg, border = "▶", "#1565c0", "#e8f0fe", "#90caf9"
+            icon = "▶"
+            title_color = "#1565c0"
+            bg = "#e8f0fe"
+            border = "#90caf9"
         elif progress.get("unlocked"):
-            icon, title_color, bg, border = "○", "#555", "#fafafa", "#ddd"
+            icon = "○"
+            title_color = "#555"
+            bg = "#fafafa"
+            border = "#ddd"
         else:
-            icon, title_color, bg, border = "🔒", "#aaa", "#f5f5f5", "#eee"
+            icon = "🔒"
+            title_color = "#aaa"
+            bg = "#f5f5f5"
+            border = "#eee"
 
         html_parts.append(
-            f"<div style='border:1px solid {border};border-radius:6px;padding:5px 8px;"
-            f"margin-bottom:5px;background:{bg};'>"
+            f"<div style='border:1px solid {border};border-radius:6px;padding:6px 8px;margin-bottom:6px;background:{bg};'>"
             f"<div style='color:{title_color};font-weight:600;'>{icon} {subtopic['title']}</div>"
         )
+
         if (progress.get("unlocked") or is_current) and total > 0:
             pct = int(completed / total * 100)
-            bar_color = "#4caf50" if progress.get("mastered") else "#5dade2"
+            bar_filled = "#4caf50" if progress.get("mastered") else "#5dade2"
             html_parts.append(
-                f"<div style='margin-top:3px;display:flex;align-items:center;gap:6px;'>"
-                f"<div style='flex:1;background:#e0e0e0;border-radius:4px;height:4px;'>"
-                f"<div style='width:{pct}%;background:{bar_color};height:4px;border-radius:4px;'>"
-                f"</div></div>"
-                f"<span style='color:#999;font-size:0.85em;'>{completed}/{total}</span></div>"
+                f"<div style='margin-top:4px;display:flex;align-items:center;gap:6px;'>"
+                f"<div style='flex:1;background:#e0e0e0;border-radius:4px;height:5px;'>"
+                f"<div style='width:{pct}%;background:{bar_filled};height:5px;border-radius:4px;'></div></div>"
+                f"<span style='color:#777;font-size:0.9em;white-space:nowrap;'>{completed}/{total}</span>"
+                f"</div>"
             )
+            for idx, point in enumerate(learning_points):
+                lp_key = f"lp_{idx}"
+                status = lp_progress.get(lp_key, "locked")
+                if status == "completed":
+                    dot = "✓"; dot_color = "#4caf50"
+                elif status == "active":
+                    dot = "→"; dot_color = "#1565c0"
+                else:
+                    dot = "·"; dot_color = "#bbb"
+                short = point if len(point) <= 42 else point[:39] + "…"
+                html_parts.append(
+                    f"<div style='margin-left:1em;margin-top:2px;color:#666;'>"
+                    f"<span style='color:{dot_color};font-weight:bold;'>{dot}</span> {short}</div>"
+                )
+
         html_parts.append("</div>")
+
     html_parts.append("</div>")
     st.markdown("".join(html_parts), unsafe_allow_html=True)
 
@@ -1400,160 +1434,275 @@ def render_concept_tracker():
 def sidebar_nav():
     with st.sidebar:
         st.markdown("## TutorQuest")
-
+        username = st.session_state.get("username", "Guest")
+        st.caption(f"Welcome, **{username}**!")
+        
+        st.markdown("### Navigate")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("Home", use_container_width=True,
-                         type="primary" if st.session_state.page == "User Home" else "secondary"):
+            if st.button("Home", use_container_width=True, type="primary" if st.session_state.page == "User Home" else "secondary"):
                 st.session_state.page = "User Home"
                 st.rerun()
         with col2:
-            if st.button("Chat", use_container_width=True,
-                         type="primary" if st.session_state.page == "Tutoring Chat" else "secondary"):
+            if st.button("Chat", use_container_width=True, type="primary" if st.session_state.page == "Tutoring Chat" else "secondary"):
                 st.session_state.page = "Tutoring Chat"
                 st.rerun()
-
+        
         st.divider()
+        
+        if st.session_state.page == "Tutoring Chat":
+            st.markdown("### Tutor Mode")
+            if st.session_state.personality not in PERSONALITIES:
+                st.session_state.personality = "Socratic"
 
-        username = st.session_state.get("username", "Guest")
-        st.markdown(f"**{username}**")
+            descriptions = {
+                "Socratic": "Guided questioning, no XP",
+                "Socratic Gamified": "Guided questioning + XP & levels",
+                "Direct": "Structured lessons, no XP",
+                "Direct Gamified": "Structured lessons + XP & levels",
+            }
+
+            for p in PERSONALITIES:
+                is_active = st.session_state.personality == p
+                button_type = "primary" if is_active else "secondary"
+                ind_col, btn_col = st.columns([0.06, 0.94])
+                with ind_col:
+                    if is_active:
+                        st.markdown(
+                            "<div style='background:#1565c0;width:3px;height:34px;"
+                            "border-radius:2px;margin-top:3px;'></div>",
+                            unsafe_allow_html=True
+                        )
+                with btn_col:
+                    _clicked = st.button(f"{p}", use_container_width=True, type=button_type, key=f"personality_{p}")
+                if _clicked and p != st.session_state.personality:
+                    st.session_state.personality = p
+                    st.session_state.chat_session = None
+                    st.session_state.chat_session_personality = None
+                    st.session_state.chat_session_pdf_id = None
+                    st.session_state.messages = []
+                    st.session_state.awaiting_answer = False
+                    st.session_state.question_type = None
+                    st.session_state.current_topic = "General Tutoring"
+                    st.session_state.intro_sent = False
+                    st.session_state.message_feedback = {}
+                    st.session_state.last_question_asked = None
+                    save_persisted_state()
+                    st.rerun()
+
+            st.caption(descriptions[st.session_state.personality])
+            st.divider()
+        
         if is_gamified():
-            st.caption(f"Level {st.session_state.level} · {st.session_state.xp} XP")
+            st.metric("Level", st.session_state.level)
+            st.metric("XP", st.session_state.xp)
             st.progress(level_progress(st.session_state.xp))
-
-        st.divider()
-
-        st.markdown("**Silk Road Progress**")
+        st.markdown("### Silk Road Progress")
         render_concept_tracker()
-
+        
         st.divider()
-
-        if st.button("Sign Out", use_container_width=True, type="secondary"):
-            try:
-                if STATE_FILE.exists():
-                    STATE_FILE.unlink()
-            except Exception:
-                pass
-            for key in list(st.session_state.keys()):
-                del st.session_state[key]
-            st.rerun()
+        
+        # Show feedback stats
+        feedback_stats = get_feedback_stats()
+        if feedback_stats["total"] > 0:
+            st.markdown("### Your Feedback")
+            st.caption(f"👍 {feedback_stats['positive']} • 👎 {feedback_stats['negative']}")
+            st.caption(f"Satisfaction: {feedback_stats['rate']}%")
+            st.divider()
+        
+        if len(st.session_state.messages) > 0:
+            chat_export = []
+            for msg in st.session_state.messages:
+                if isinstance(msg, Message):
+                    chat_export.append({"role": msg.role, "content": msg.content})
+                elif isinstance(msg, dict):
+                    chat_export.append({"role": msg.get("role", "unknown"), "content": msg.get("content", "")})
+            
+            chat_json = json.dumps(chat_export, indent=2)
+            
+            st.download_button(
+                label="Download Chat History",
+                data=chat_json,
+                file_name=f"silk_road_chat_{st.session_state.current_subtopic}.json",
+                mime="application/json",
+                use_container_width=True
+            )
+        
+        st.divider()
+        
+        with st.container(border=True):
+            st.markdown("#### Profile")
+            username = st.session_state.get("username", "Guest")
+            st.markdown(f"**{username}**")
+            if is_gamified():
+                st.caption(f"Level {st.session_state.level} • {st.session_state.xp} XP")
+            if st.button("Sign Out", use_container_width=True, type="secondary"):
+                # Clear the JSON file to prevent auto-login
+                try:
+                    if STATE_FILE.exists():
+                        STATE_FILE.unlink()
+                except Exception:
+                    pass
+                # Clear all session state
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                st.rerun()
 
 
 def page_home():
-    username = st.session_state.get("username", "Learner")
-    st.title(f"Welcome back, {username.capitalize()}")
+    st.title("Welcome back")
+    st.caption("Track your learning streaks, XP, and level progress.")
 
-    # Continue lesson card
-    current_subtopic_key = st.session_state.get("current_subtopic", "origins_expansion")
-    current_subtopic = None
-    for concept in LEARNING_CONCEPTS:
-        for s in concept["subtopics"]:
-            if s["key"] == current_subtopic_key:
-                current_subtopic = s
-                break
+    col_main, col_side = st.columns([2.6, 1.4])
 
-    with st.container(border=True):
-        st.subheader("Continue your lesson")
-        if current_subtopic:
-            lp_progress = st.session_state.get("learning_point_progress", {}).get(current_subtopic_key, {})
-            total = len(current_subtopic.get("learning_points", []))
-            completed = sum(1 for i in range(total) if lp_progress.get(f"lp_{i}") == "completed")
-            st.markdown(f"**{current_subtopic['title']}**")
-            st.caption(current_subtopic["description"])
-            if total > 0:
-                st.progress(completed / total, text=f"{completed}/{total} learning points complete")
-        if st.button("Continue lesson", type="primary"):
+    with col_main:
+        with st.container(border=True):
+            st.subheader("Current progress")
+            st.metric("Level", st.session_state.level)
+            st.metric("XP", st.session_state.xp)
+            current = st.session_state.xp % NEXT_LEVEL_XP
+            remaining = NEXT_LEVEL_XP - current
+            st.progress(
+                level_progress(st.session_state.xp),
+                text=f"{current}/{NEXT_LEVEL_XP} • {remaining} XP to next level",
+            )
+            
+            # Real stats from actual activity
+            questions_answered = len([m for m in st.session_state.messages if m.role == "user"])
+            mini_qs_completed = sum(1 for m in st.session_state.messages 
+                                   if hasattr(m, "metadata") and m.metadata 
+                                   and m.metadata.get("type") == "mini" 
+                                   and m.metadata.get("xp_awarded", 0) > 0)
+            quizzes_completed = sum(1 for m in st.session_state.messages 
+                                   if hasattr(m, "metadata") and m.metadata 
+                                   and m.metadata.get("type") == "quiz" 
+                                   and m.metadata.get("xp_awarded", 0) > 0)
+            
+            s1, s2, s3 = st.columns(3)
+            s1.metric("Questions Answered", questions_answered, help="Total questions you've answered")
+            s2.metric("Mini-Qs Earned", mini_qs_completed, help="Mini-questions where you earned XP")
+            s3.metric("Quizzes Passed", quizzes_completed, help="Quiz questions answered correctly")
+
+    with col_side:
+        with st.container(border=True):
+            st.subheader("Badges Earned")
+            badges = []
+            
+            # Badges based on actual achievements
+            if st.session_state.level >= 2:
+                badges.append("🎯 Focused Learner")
+            if st.session_state.level >= 5:
+                badges.append("📚 Knowledge Seeker")
+            if st.session_state.xp >= 100:
+                badges.append("💯 Century Club")
+            
+            # Check if user has completed any subtopics
+            mastered_count = sum(1 for progress in st.session_state.subtopic_progress.values() 
+                               if progress.get("mastered", False))
+            if mastered_count >= 1:
+                badges.append("✅ First Mastery")
+            if mastered_count >= 3:
+                badges.append("🌟 Master Scholar")
+            
+            # Check for engagement badges
+            questions_answered = len([m for m in st.session_state.messages if m.role == "user"])
+            if questions_answered >= 10:
+                badges.append("💬 Engaged Learner")
+            if questions_answered >= 50:
+                badges.append("🚀 Learning Champion")
+            
+            if badges:
+                for badge in badges:
+                    st.write(badge)
+            else:
+                st.caption("🏆 Earn badges by learning with your tutor!")
+                st.caption("• Reach level 2 for your first badge")
+                st.caption("• Complete subtopics to unlock more")
+        st.markdown("\n")
+        with st.container(border=True):
+            st.subheader("Next goals")
+            st.markdown("- Complete a tutor chat\n- Answer a Mini-Q\n- Finish a quiz round")
+        
+        # Show feedback summary on home page
+        feedback_stats = get_feedback_stats()
+        if feedback_stats["total"] > 0:
+            st.markdown("\n")
+            with st.container(border=True):
+                st.subheader("Tutor Feedback")
+                st.markdown(f"**{feedback_stats['rate']}%** satisfaction")
+                st.caption(f"Based on {feedback_stats['total']} ratings")
+
+    st.markdown("---")
+    st.subheader("Daily Learning")
+    st.caption("Start your learning journey and build your daily streak!")
+    
+    # Daily streak tracker (automatic, not clickable)
+    st.markdown("### 🔥 Daily Streak")
+    col_streak1, col_streak2 = st.columns([1, 3])
+    with col_streak1:
+        st.metric("Current Streak", "0 days", help="Complete at least one learning session daily to build your streak")
+    with col_streak2:
+        st.caption("💡 **Tip:** Answer questions with your tutor to maintain your streak and earn XP!")
+    
+    st.markdown("\n")
+    st.markdown("### Quick Start Learning")
+    a1, a2, a3 = st.columns(3)
+    with a1:
+        if st.button("🧠 Start Practice Session", use_container_width=True, type="primary"):
             st.session_state.page = "Tutoring Chat"
+            st.session_state.challenge_active = False
+            st.toast("Let's practice! Answer questions to earn XP.", icon="🎓")
+            st.rerun()
+    with a2:
+        if st.button("📚 Begin New Lesson", use_container_width=True):
+            st.session_state.page = "Tutoring Chat"
+            st.session_state.challenge_active = False
+            # Reset to start fresh lesson
+            st.session_state.messages = []
+            st.session_state.intro_sent = False
+            st.session_state.chat_session = None
+            st.toast("Starting new lesson! Engage with the tutor to earn XP.", icon="📖")
+            st.rerun()
+    with a3:
+        if st.button("⚡ Challenge Question", use_container_width=True):
+            st.session_state.page = "Tutoring Chat"
+            st.session_state.challenge_active = True
+            st.toast("Challenge armed! Answer correctly for bonus XP.", icon="⚡")
+            save_persisted_state()
             st.rerun()
 
-    # Stats row
-    mastered_count = sum(1 for p in st.session_state.subtopic_progress.values() if p.get("mastered"))
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Level", st.session_state.level)
-    c2.metric("XP", st.session_state.xp)
-    c3.metric("Subtopics mastered", mastered_count)
-
-    # Badges
-    badges = []
-    if st.session_state.level >= 2:
-        badges.append("🎯 Focused Learner")
-    if st.session_state.level >= 5:
-        badges.append("📚 Knowledge Seeker")
-    if st.session_state.xp >= 100:
-        badges.append("💯 Century Club")
-    if mastered_count >= 1:
-        badges.append("✅ First Mastery")
-    if mastered_count >= 3:
-        badges.append("🌟 Master Scholar")
-    questions_answered = len([m for m in st.session_state.messages if m.role == "user"])
-    if questions_answered >= 10:
-        badges.append("💬 Engaged Learner")
-    if questions_answered >= 50:
-        badges.append("🚀 Learning Champion")
-
-    if badges:
-        st.markdown("**Badges**")
-        st.markdown("  ".join(badges))
-    else:
-        st.caption("Reach level 2 and answer questions with your tutor to earn badges.")
-
-    with st.expander("How XP works"):
-        st.markdown(
-            "- **Socratic Gamified:** 10 XP per thoughtful answer\n"
-            "- **Direct Gamified:** 25 XP per quiz question\n"
-            "- **Challenge bonus:** +10 XP extra\n"
-            "- Level up every 100 XP"
-        )
+    st.info(
+        "💎 **Earn XP by learning!** Use a Gamified tutor mode and answer questions:\n"
+        "- Socratic Gamified: 10 XP per thoughtful answer\n"
+        "- Direct Gamified: 25 XP per quiz question\n"
+        "- Challenge bonus: +10 XP extra"
+    )
 
 
 def page_chat():
     st.title("Tutoring Chat")
-
-    # Mode selector
-    if st.session_state.personality not in PERSONALITIES:
-        st.session_state.personality = "Socratic"
-    bp = base_personality(st.session_state.personality)
-    gamified = is_gamified(st.session_state.personality)
-
-    col_style, col_gamified, col_info = st.columns([2, 2, 3])
-    with col_style:
-        new_bp = st.radio("Tutor style", ["Socratic", "Direct"],
-                          index=0 if bp == "Socratic" else 1,
-                          horizontal=True, label_visibility="collapsed")
-    with col_gamified:
-        new_gamified = st.toggle("Gamified", value=gamified)
-    with col_info:
-        current_subtopic_key = st.session_state.get("current_subtopic", "origins_expansion")
-        for concept in LEARNING_CONCEPTS:
-            for s in concept["subtopics"]:
-                if s["key"] == current_subtopic_key:
-                    st.caption(f"Current subtopic: **{s['title']}**")
-                    break
-
-    new_personality = f"{new_bp} Gamified" if new_gamified else new_bp
-    if new_personality != st.session_state.personality:
-        st.session_state.personality = new_personality
-        st.session_state.chat_session = None
-        st.session_state.chat_session_personality = None
-        st.session_state.chat_session_pdf_id = None
-        st.session_state.messages = []
-        st.session_state.awaiting_answer = False
-        st.session_state.question_type = None
-        st.session_state.current_topic = "General Tutoring"
-        st.session_state.intro_sent = False
-        st.session_state.message_feedback = {}
-        st.session_state.last_question_asked = None
-        save_persisted_state()
-        st.rerun()
-
     personality = st.session_state.personality
+    
+    if is_gamified(personality):
+        st.caption(f"Learning with **{personality}** tutor • Answer questions to earn XP")
+    else:
+        st.caption(f"Learning with **{personality}** tutor")
+    
+    st.markdown(f"**Current Topic:** {st.session_state.current_topic}")
 
     model_info = get_ai_model()
     if model_info is None:
         st.error("AI API key not configured. Please set GROQ_API_KEY or GEMINI_API_KEY in your environment or Streamlit secrets.")
         return
+    
+    # Show which provider is being used
+    provider = model_info.get("provider", "unknown")
+    if provider == "groq":
+        st.caption("🚀 Using Groq (Llama 3.1 70B)")
+    elif provider == "gemini":
+        st.caption("✨ Using Google Gemini")
 
-    with st.expander("Optional: Upload curriculum PDF", expanded=False):
+    with st.expander("Upload Curriculum (PDF)", expanded=not st.session_state.pdf_uploaded):
         uploaded_file = st.file_uploader(
             "Upload a PDF for the tutor to reference",
             type=["pdf"],
@@ -1611,38 +1760,44 @@ def page_chat():
     chip_query = None
     chip_topic = None
 
+    st.markdown("#### Silk Road Learning Routes")
+    
     active_concept = get_concept()
     if st.session_state.current_topic in ("General Tutoring", "", None):
         st.session_state.current_topic = active_concept["title"]
+    st.caption(f"{active_concept['description']}")
 
-    # Primary quick-start row
-    primer_col, challenge_col = st.columns(2)
+    primer_col, challenge_col = st.columns([1, 1])
     with primer_col:
-        if st.button("Route primer", use_container_width=True,
-                     help="Get an overview and learning roadmap for the Silk Road topic"):
+        if st.button("Route primer", use_container_width=True, help="Get an overview and learning roadmap for the Silk Road topic"):
             chip_query = active_concept["starter"]
             chip_topic = active_concept["title"]
     with challenge_col:
-        if st.button("Challenge Question", use_container_width=True,
-                     help="Get a tough synthesis question on everything discussed"):
+        if st.button("Challenge Question", use_container_width=True, help="Get a tough synthesis question on everything discussed"):
             challenge_prompt = "Give me a challenge question on everything we've discussed in this chat so far. This should test deep synthesis and understanding across multiple concepts."
+            
             st.session_state.messages.append(Message(role="user", content=challenge_prompt, metadata=None))
             save_persisted_state()
+            
             try:
                 with st.spinner("Preparing challenge question..."):
                     reply = chat_with_tutor(model_info, personality, challenge_prompt, st.session_state.pdf_file_ref)
+                
                 if not reply or reply.strip() == "":
                     reply = "Here's a challenge question: How did the geographic, political, and cultural factors of the Silk Road interact to shape the flow of trade and ideas between East and West?"
             except Exception as e:
                 st.error(f"Chat error: {e}")
                 reply = f"I encountered an error: {e}. Here's a backup challenge: How did the Silk Road transform both Eastern and Western civilizations?"
+            
             clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
+            
             msg_metadata = {
                 "question_type": question_type,
                 "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
                 "personality": personality,
             }
             st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata=msg_metadata))
+            
             st.session_state.awaiting_answer = True
             st.session_state.question_type = question_type or "quiz"
             st.session_state.challenge_active = True
@@ -1651,28 +1806,43 @@ def page_chat():
             save_persisted_state()
             st.rerun()
 
-    # More quick starts in expander
+    st.markdown("##### Quick starts:")
+    pp1, pp2, pp3, pp4 = st.columns([1.4, 1.6, 1.8, 2])
+    
     _socratic_starts = [
         ("Northern Route", "Guide me through the northern Silk Road route with questions."),
         ("Trade Goods", "Help me reason through what goods were traded on the Silk Road."),
-        ("Cultural Exchange", "Ask me guiding questions about cultural exchange on the Silk Road."),
-        ("Surprise me", f"Give me a fresh angle on {active_concept['title']} with a question to get started."),
+        ("Cultural Exchange", "Ask me guiding questions about cultural exchange on the Silk Road.")
     ]
     _direct_starts = [
         ("Silk Road Origins", "Teach me about the origins and expansion of the Silk Road."),
         ("Route Comparison", "Walk me through the northern vs. southern Silk Road routes."),
-        ("Political Powers", "Give me a clear outline of empires controlling the Silk Road."),
-        ("Surprise me", f"Give me a fresh angle on {active_concept['title']} with a question to get started."),
+        ("Political Powers", "Give me a clear outline of empires controlling the Silk Road.")
     ]
-    starts = _socratic_starts if base_personality(personality) == "Socratic" else _direct_starts
+    quick_starts = {
+        "Socratic": _socratic_starts,
+        "Socratic Gamified": _socratic_starts,
+        "Direct": _direct_starts,
+        "Direct Gamified": _direct_starts,
+    }
 
-    with st.expander("More quick starts"):
-        qs_cols = st.columns(len(starts))
-        for col, (label, prompt) in zip(qs_cols, starts):
-            with col:
-                if st.button(label, use_container_width=True, key=f"qs_{label}"):
-                    chip_query = prompt
-                    chip_topic = label
+    starts = quick_starts.get(personality, _direct_starts)
+    with pp1:
+        if st.button(starts[0][0], use_container_width=True):
+            chip_query = starts[0][1]
+            chip_topic = starts[0][0]
+    with pp2:
+        if st.button(starts[1][0], use_container_width=True):
+            chip_query = starts[1][1]
+            chip_topic = starts[1][0]
+    with pp3:
+        if st.button(starts[2][0], use_container_width=True):
+            chip_query = starts[2][1]
+            chip_topic = starts[2][0]
+    with pp4:
+        if st.button("Surprise me", use_container_width=True):
+            chip_query = f"Give me a fresh angle on {active_concept['title']} with a question to get started."
+            chip_topic = active_concept["title"]
     
     ensure_initial_tutor_message(model_info)
 
@@ -1753,15 +1923,11 @@ def page_chat():
                                 st.session_state.editing_message_idx = idx
                                 st.rerun()
                 else:
+                    # Assistant message - show content and feedback buttons
                     st.markdown(content)
-                    # Feedback only on the most recent assistant message
-                    last_idx = max(
-                        (i for i, m in enumerate(st.session_state.messages)
-                         if (m.role if isinstance(m, Message) else m.get("role")) == "assistant"),
-                        default=-1
-                    )
-                    if idx == last_idx:
-                        render_feedback_buttons(idx)
+                    
+                    # Render subtle feedback buttons beneath assistant messages
+                    render_feedback_buttons(idx)
 
     user_input = st.chat_input("Ask a question or answer the tutor...")
     query = chip_query or user_input
@@ -1934,37 +2100,25 @@ def page_chat():
         
         st.rerun()
 
-    # Bottom action bar
-    def _reset_chat():
-        st.session_state.messages = []
-        st.session_state.awaiting_answer = False
-        st.session_state.question_type = None
-        st.session_state.current_topic = get_concept()["title"]
-        st.session_state.chat_session = None
-        st.session_state.chat_session_personality = None
-        st.session_state.chat_session_pdf_id = None
-        st.session_state.intro_sent = False
-        st.session_state.challenge_active = False
-        st.session_state.topic_refresh_counter = 0
-        st.session_state.message_feedback = {}
-        st.session_state.last_question_asked = None
-        save_persisted_state()
-
+    # Bottom section with Continue buttons for Direct, Reset, and status
     if base_personality(personality) == "Direct" and len(st.session_state.messages) > 1:
-        btn_cols = st.columns([1, 1])
-        with btn_cols[0]:
+        col_cont1, col_cont2, col_cont3 = st.columns([1, 1, 1])
+        with col_cont1:
             if st.button("Continue", use_container_width=True, type="primary", key="continue_btn_bottom"):
                 query = "continue"
                 st.session_state.messages.append(Message(role="user", content=query, metadata=None))
                 save_persisted_state()
+                
                 try:
                     with st.spinner("Tutor is thinking..."):
                         reply = chat_with_tutor(model_info, personality, query, st.session_state.pdf_file_ref)
+                    
                     if not reply or reply.strip() == "":
                         reply = "Let me continue with the next section of our lesson..."
                 except Exception as e:
                     st.error(f"Chat error: {e}")
                     reply = f"I encountered an error: {e}. Please try again."
+                
                 clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
                 msg_metadata = {
                     "question_type": question_type,
@@ -1979,29 +2133,99 @@ def page_chat():
                     st.session_state.hint_given_this_question = False
                 save_persisted_state()
                 st.rerun()
-        with btn_cols[1]:
+        with col_cont2:
+            if st.button("Ready for Quiz", use_container_width=True, key="quiz_btn_bottom"):
+                query = "I'm ready for the quiz"
+                st.session_state.messages.append(Message(role="user", content=query, metadata=None))
+                save_persisted_state()
+                
+                try:
+                    with st.spinner("Preparing quiz..."):
+                        reply = chat_with_tutor(model_info, personality, query, st.session_state.pdf_file_ref)
+                    
+                    if not reply or reply.strip() == "":
+                        reply = "[QUIZ] Question 1: What was the primary purpose of Zhang Qian's mission to the West?"
+                except Exception as e:
+                    st.error(f"Chat error: {e}")
+                    reply = f"I encountered an error: {e}. Please try again."
+                
+                clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
+                msg_metadata = {
+                    "question_type": question_type,
+                    "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
+                    "personality": personality,
+                }
+                st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata=msg_metadata))
+                if question_type:
+                    st.session_state.awaiting_answer = True
+                    st.session_state.question_type = question_type
+                    st.session_state.current_hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
+                    st.session_state.hint_given_this_question = False
+                save_persisted_state()
+                st.rerun()
+        with col_cont3:
             if st.button("Reset chat", use_container_width=True, type="secondary"):
-                _reset_chat()
+                st.session_state.messages = []
+                st.session_state.awaiting_answer = False
+                st.session_state.question_type = None
+                st.session_state.current_topic = get_concept()["title"]
+                st.session_state.chat_session = None
+                st.session_state.chat_session_personality = None
+                st.session_state.chat_session_pdf_id = None
+                st.session_state.intro_sent = False
+                st.session_state.challenge_active = False
+                st.session_state.topic_refresh_counter = 0
+                st.session_state.message_feedback = {}
+                st.session_state.last_question_asked = None
+                save_persisted_state()
                 st.rerun()
     else:
-        btn_cols = st.columns([1, 3])
-        with btn_cols[0]:
+        col_a, col_b = st.columns([1, 2])
+        with col_a:
             if st.button("Reset chat", use_container_width=True):
-                _reset_chat()
+                st.session_state.messages = []
+                st.session_state.awaiting_answer = False
+                st.session_state.question_type = None
+                st.session_state.current_topic = get_concept()["title"]
+                st.session_state.chat_session = None
+                st.session_state.chat_session_personality = None
+                st.session_state.chat_session_pdf_id = None
+                st.session_state.intro_sent = False
+                st.session_state.challenge_active = False
+                st.session_state.topic_refresh_counter = 0
+                st.session_state.message_feedback = {}
+                st.session_state.last_question_asked = None
+                save_persisted_state()
                 st.rerun()
-        with btn_cols[1]:
+        with col_b:
             if st.session_state.awaiting_answer:
                 q_type = st.session_state.question_type
                 if is_gamified(personality):
-                    xp_label = "10 XP for strong reasoning" if q_type == "mini" else "25 XP for quiz question"
-                    st.info(f"Awaiting answer · {xp_label}")
+                    if q_type == "mini":
+                        xp_label = "10 XP for strong reasoning"
+                    else:
+                        xp_label = "25 XP for quiz question"
+                    st.info(f"Awaiting answer • {xp_label}")
                 else:
                     st.info("Awaiting answer")
-            elif st.session_state.challenge_active and is_gamified(personality):
-                st.caption("Challenge armed — next correct answer earns +10 bonus XP.")
-            elif is_gamified(personality):
-                bp_label = "Mini-Q: 10 XP · Quiz: 25 XP" if base_personality(personality) == "Socratic" else "Quiz: 25 XP per correct answer"
-                st.caption(bp_label)
+            else:
+                if st.session_state.challenge_active and is_gamified(personality):
+                    st.caption("Challenge armed: next correct answer earns +10 bonus XP on top of regular rewards.")
+                elif is_gamified(personality):
+                    bp = base_personality(personality)
+                    if bp == "Socratic":
+                        st.caption("Mini-Q: 10 XP per thoughtful answer • Quiz: 25 XP")
+                    else:
+                        st.caption("Quiz: 25 XP per correct answer")
+
+    if base_personality(personality) == "Direct":
+        if st.session_state.awaiting_answer:
+            if is_gamified(personality):
+                st.info("Awaiting quiz answer • 25 XP per correct answer")
+            else:
+                st.info("Awaiting quiz answer")
+        else:
+            st.caption("Use 'Continue' to advance through the lesson, or type questions anytime")
 
 
 def apply_styles():
