@@ -199,7 +199,10 @@ class Message:
     metadata: Optional[Dict] = None
 
 def init_state():
-    persisted = load_persisted_state()
+    # Once a user is authenticated, use the database as the source of truth.
+    # Do not hydrate from the local JSON file, because it is not tied to a username
+    # and can leak/overwrite state between accounts.
+    persisted = {} if st.session_state.get("user_id") else load_persisted_state()
     persisted_xp = persisted.get("xp", 0)
     computed_level = 1 + persisted_xp // NEXT_LEVEL_XP
     
@@ -2385,6 +2388,15 @@ def apply_styles():
         """, unsafe_allow_html=True)
 
 
+def reset_state_for_auth(user_id, username):
+    """Keep only auth identity so the next rerun starts clean and loads DB state."""
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.session_state.user_id = user_id
+    st.session_state.username = username
+    st.session_state.db_state_loaded = False
+
+
 def show_login_page():
     st.title("Sign in to TutorQuest")
     st.write("Create an account or sign in to persist your progress across devices.")
@@ -2400,10 +2412,9 @@ def show_login_page():
     if login and username and password:
         user_id = db.authenticate_user(username.strip(), password)
         if user_id:
-            st.session_state.user_id = user_id
-            st.session_state.username = username.strip()
-            st.session_state.db_state_loaded = False
-            save_persisted_state()
+            # Do NOT save here. Saving before loading from DB can overwrite
+            # the user's saved state with defaults/local JSON state.
+            reset_state_for_auth(user_id, username.strip())
             st.success(f"✅ Signed in successfully as {username.strip()}!")
             st.rerun()
         else:
@@ -2417,10 +2428,9 @@ def show_login_page():
         else:
             created = db.create_user(username.strip(), password)
             if created:
-                st.session_state.user_id = created
-                st.session_state.username = username.strip()
-                st.session_state.db_state_loaded = False
-                save_persisted_state()
+                # Start a brand-new account from clean defaults instead of
+                # copying whatever local JSON/session state happened to exist.
+                reset_state_for_auth(created, username.strip())
                 st.success(f"🎉 Account created and signed in as {username.strip()}!")
                 st.rerun()
             else:
@@ -2478,7 +2488,9 @@ def main():
                              "hint_policy", "question_depth", "quiz_difficulty", "bandit_stats", "message_feedback"):
                         st.session_state[k] = v
                 
-                st.session_state.db_state_loaded = True
+            # Mark as loaded even when there is no saved state yet, otherwise
+            # new users keep re-checking the DB on every rerun.
+            st.session_state.db_state_loaded = True
         except Exception as e:
             st.error(f"Error loading saved state: {e}")
 
