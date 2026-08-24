@@ -30,108 +30,159 @@ def is_gamified(p: str = None) -> bool:
 LEARNING_CONCEPTS = [
     {
         "key": "silk_road",
-        "title": "Silk Road Trade Routes",
-        "description": "Explore the ancient trade networks connecting East and West.",
-        "starter": "Guide me through the northern and southern Silk Road routes and what choices traders faced.",
+        "title": "Silk Roads: Trade Revival (Topic 2.1)",
+        "description": "How interregional trade on the Silk Roads expanded after centuries of decline.",
+        "starter": "Walk me through why Silk Road trade revived after the fall of Rome and Han China, and what changed to make it possible.",
         "subtopics": [
             {
-                "key": "origins_expansion",
-                "title": "Origins & Expansion",
-                "description": "How the Silk Road began and grew",
+                "key": "causes_of_growth",
+                "title": "Causes of Growth: Revival & New Empires",
+                "description": "Why interregional trade on the Silk Roads expanded after centuries of decline",
                 "unlocked": True,
                 "mastered": False,
                 "learning_points": [
-                    "Zhang Qian's mission to Central Asia (138-126 BCE)",
-                    "Han Dynasty's role in establishing trade routes",
-                    "Why it's called the 'Silk Road' (Ferdinand von Richthofen, 1877)",
-                    "Initial connections between China, Persia, and Rome"
+                    "European demand for luxury goods (silk, tea, rhubarb) grew as the Crusades exposed lords and knights to Eastern fabrics and spices, reviving overland and Mediterranean/Indian Ocean sea routes despite Ottoman inroads on Byzantium. China remained eager for Europe's gold and silver, so trade flowed both directions even though Europeans had not yet found a sea route around Africa's Cape of Good Hope.",
+                    "The first golden age of the Silk Roads (under Rome and Han China) had collapsed, but by the 8th-9th centuries Arab merchants from the Abbasid Empire revived the land route and Indian Ocean sea routes, ushering in a second golden age centered on Tang China's exports of the compass, paper, and gunpowder in return for cotton, precious stones, pomegranates, dates, horses, and grapes.",
+                    "The rise of the Mongol Empire had the single greatest impact on trade expansion: after conquering the Abbasid Caliphate (1258) and bringing China under their control in the 14th century, the Mongols unified previously separate stretches of the Silk Roads under one authority that respected merchants, improved roads, and punished bandits.",
+                    "This Mongol unification opened new trade channels linking Asia, the Middle East, Africa, and Europe, allowing survivors of the Mongol conquests and their descendants to benefit from a reinvigoration of routes not heavily used since the days of the Roman and Han Empires."
                 ]
             },
             {
-                "key": "northern_route",
-                "title": "Northern Route",
-                "description": "Through Central Asia and the steppes",
+                "key": "transportation_caravans",
+                "title": "Transportation, Caravans & Trade Cities",
+                "description": "How goods and people actually moved across the Silk Roads, and where they stopped",
                 "unlocked": False,
                 "mastered": False,
                 "learning_points": [
-                    "Path through the Eurasian steppes",
-                    "Major cities: Samarkand, Bukhara, Merv",
-                    "Role of nomadic tribes (Sogdians, Turks)",
-                    "Climate and terrain challenges"
+                    "Travelers on the overland Silk Roads learned that moving in caravans was safer than traveling alone, and they designed saddles for camels that greatly increased the weight of the load the animals could carry — a direct technological enabler of higher-volume trade.",
+                    "China's naval technology advances — the magnetic compass and an improved rudder, both developed during the Han Dynasty — aided navigation on sea routes, and the Chinese junk (similar to the Southwest Asian dhow, as long as 400 feet, with a compartmentalized hull) gave China control of South China Sea trade routes.",
+                    "Long stretches of the overland Silk Roads passed through hot, arid terrain where water was scarce, so river-watered cities became thriving trade centers: Kashgar, where the northern and southern routes crossed, supported artisans producing textiles, rugs, leather goods, and pottery, and became a center of Islamic scholarship.",
+                    "Samarkand, in present-day Uzbekistan's Zeravshan River valley, was a key stopping point between China and the Mediterranean and a center of cultural exchange — archaeological remains show Christianity, Buddhism, Zoroastrianism, and Islam all present there. Caravanserai (inns roughly 100 miles apart, the distance camels could travel before needing water) let travelers rest, resupply, and trade animals for fresh ones."
                 ]
             },
             {
-                "key": "southern_route",
-                "title": "Southern Route",
-                "description": "Through the oases and deserts",
+                "key": "commercial_innovations",
+                "title": "Commercial Innovations",
+                "description": "The financial systems China and Europe developed to manage growing trade volume",
                 "unlocked": False,
                 "mastered": False,
                 "learning_points": [
-                    "Path along the Taklamakan Desert oases",
-                    "Major cities: Kashgar, Khotan, Dunhuang",
-                    "Desert survival and caravanserais",
-                    "Connection to maritime routes"
+                    "China had long been a money economy — using coined currency rather than bartering with commodities such as cowrie shells or salt — but copper coins became too unwieldy to transport for everyday transactions as trade volume grew.",
+                    "China's government responded by developing a system of credit known as 'flying cash,' which let a merchant deposit paper money under his name in one location and withdraw the same amount at another. Locations for exchanging flying cash became the model for the banking houses later established in European cities in the 1300s.",
+                    "At a banking house, a person could present a bill of exchange — a document promising the holder payment of a set amount on a set date — and receive that amount in exchange. Each of these innovations encouraged trade by providing convenience and the stability of institutions.",
+                    "Europeans organized their own trade response to Crusade-driven demand for Asian luxury goods: in the 13th century, cities in northern Germany and Scandinavia (including Lubeck, Hamburg, and Riga) formed the Hanseatic League, a commercial alliance that drove out pirates and monopolized trade in timber, grain, leather, and salted fish across the North and Baltic Seas until the mid-17th century."
                 ]
             },
             {
-                "key": "goods_trade",
-                "title": "Goods & Trade",
-                "description": "Silk, spices, jade, and more",
+                "key": "increase_in_demand",
+                "title": "Increase in Demand & Its Effects",
+                "description": "How rising demand for luxury goods reshaped production and industry",
                 "unlocked": False,
                 "mastered": False,
                 "learning_points": [
-                    "Chinese exports: silk, porcelain, tea, paper",
-                    "Western exports: gold, silver, glassware, wool",
-                    "Central Asian goods: horses, jade, spices",
-                    "How goods changed value along the route"
-                ]
-            },
-            {
-                "key": "cultural_exchange",
-                "title": "Cultural Exchange",
-                "description": "Ideas, religions, and technologies",
-                "unlocked": False,
-                "mastered": False,
-                "learning_points": [
-                    "Spread of Buddhism from India to China",
-                    "Introduction of paper and gunpowder to the West",
-                    "Exchange of artistic styles and techniques",
-                    "Language and writing system influences"
-                ]
-            },
-            {
-                "key": "political_powers",
-                "title": "Political Powers",
-                "description": "Empires controlling the routes",
-                "unlocked": False,
-                "mastered": False,
-                "learning_points": [
-                    "Han and Tang Dynasties (China)",
-                    "Persian Empires (Parthian, Sasanian)",
-                    "Byzantine Empire's role",
-                    "Mongol Empire's impact on trade unification"
+                    "Growing demand for luxury goods from Afro-Eurasia, China, Persia, and India led to a corresponding increase in the supply of those goods through expanded production, as craftworkers expanded their output of silk, other textiles, and porcelains specifically for export.",
+                    "Increased demand also led to the expansion of iron and steel manufacturing in China, motivating a period of proto-industrialization as producers sought more efficient ways to meet rising external orders rather than relying solely on traditional small-scale production.",
+                    "This demand-driven expansion of production connects to the broader pattern of the chapter: growth in trade volume required innovations in transport (saddles, caravanserai), finance (flying cash, banking houses), and production capacity all happening together, not in isolation.",
+                    "The 'Innovations in Commerce' timeline situates these financial tools across centuries, not as simultaneous inventions: coin (c. 500 BCE, Lydia/Turkey), caravanserai (c. 500 BCE, Persian Empire), banking house (c. 200 BCE, China), bill of exchange (c. 700 CE, China), paper money (c. 800 CE, China), and the Hanseatic League (1296 CE, Germany)."
                 ]
             },
         ],
     },
 ]
 
+QUIZ_BANK = [
+    {
+        "subtopic": "causes_of_growth",
+        "question": "Which event most directly caused European demand for Eastern luxury goods like silk and spices to grow?",
+        "options": ["The Crusades", "The fall of the Byzantine Empire", "The invention of the compass", "The Black Death"],
+        "answer": 0,
+    },
+    {
+        "subtopic": "causes_of_growth",
+        "question": "Arab merchants from which empire revived the Silk Roads' land and Indian Ocean sea routes in the 8th-9th centuries, ushering in a second golden age?",
+        "options": ["Ottoman Empire", "Abbasid Empire", "Byzantine Empire", "Umayyad Caliphate"],
+        "answer": 1,
+    },
+    {
+        "subtopic": "causes_of_growth",
+        "question": "What single development had the greatest impact on Silk Road trade expansion, according to the curriculum?",
+        "options": ["The invention of paper money", "The Mongol Empire's conquest and unification of the routes", "The founding of the Hanseatic League", "The building of caravanserai"],
+        "answer": 1,
+    },
+    {
+        "subtopic": "transportation_caravans",
+        "question": "What technological improvement allowed camels to carry significantly heavier loads on overland Silk Road routes?",
+        "options": ["Iron horseshoes", "Improved camel saddles", "The magnetic compass", "Paved roads"],
+        "answer": 1,
+    },
+    {
+        "subtopic": "transportation_caravans",
+        "question": "Roughly how far apart were caravanserai typically spaced, and why?",
+        "options": ["10 miles apart, a day's walk", "100 miles apart, the distance camels could travel before needing water", "500 miles apart, marking country borders", "1 mile apart, for safety in numbers"],
+        "answer": 1,
+    },
+    {
+        "subtopic": "transportation_caravans",
+        "question": "Which city, where the northern and southern Silk Road routes crossed, became a center of Islamic scholarship and a hub for textile and pottery artisans?",
+        "options": ["Samarkand", "Kashgar", "Dunhuang", "Baghdad"],
+        "answer": 1,
+    },
+    {
+        "subtopic": "commercial_innovations",
+        "question": "What was 'flying cash,' developed by China's government?",
+        "options": ["A tax on silk exports", "A credit system letting merchants deposit money in one place and withdraw it elsewhere", "A type of paper currency backed by gold", "A postal service for merchants"],
+        "answer": 1,
+    },
+    {
+        "subtopic": "commercial_innovations",
+        "question": "A bill of exchange, presented at a banking house, was:",
+        "options": ["A receipt for goods delivered", "A document promising payment of a set amount on a set date", "A license to trade in a foreign city", "A map of trade routes"],
+        "answer": 1,
+    },
+    {
+        "subtopic": "commercial_innovations",
+        "question": "The Hanseatic League was:",
+        "options": ["A Mongol trade administration", "A commercial alliance of northern German and Scandinavian cities that drove out pirates and monopolized North/Baltic Sea trade", "A Chinese guild of silk merchants", "A Silk Road tax-collection agency"],
+        "answer": 1,
+    },
+    {
+        "subtopic": "increase_in_demand",
+        "question": "Rising demand for silk, textiles, and porcelain led Chinese craftworkers to:",
+        "options": ["Reduce production to raise prices", "Expand production specifically for export", "Switch entirely to iron goods", "Stop trading with Europe"],
+        "answer": 1,
+    },
+    {
+        "subtopic": "increase_in_demand",
+        "question": "Increased demand also drove the expansion of which industry in China, motivating a period of proto-industrialization?",
+        "options": ["Textile dyeing", "Iron and steel manufacturing", "Shipbuilding", "Porcelain glazing"],
+        "answer": 1,
+    },
+    {
+        "subtopic": "increase_in_demand",
+        "question": "According to the 'Innovations in Commerce' timeline, which of these came first?",
+        "options": ["The Hanseatic League (1296 CE)", "Paper money (c. 800 CE)", "Caravanserai (c. 500 BCE)", "Bill of exchange (c. 700 CE)"],
+        "answer": 2,
+    },
+]
+
 COMMUNITY_MESSAGES = [
-    "Maya shared her notes on Silk Road cultural exchanges with the study circle.",
-    "Jonas hit a three-day streak by tackling Silk Road questions daily.",
-    "Elena just wrapped a quiz on the Northern Route—go for the next badge!",
+    "Maya shared her notes on the Mongol unification of trade routes with the study circle.",
+    "Jonas hit a three-day streak working through Commercial Innovations questions.",
+    "Elena just wrapped a quiz on Transportation & Trade Cities—go for the next badge!",
 ]
 
 TOPIC_KEYWORDS = {
     "silk_road": [
-        ("culture", "Cultural interactions on the Silk Road"),
-        ("cultures", "Cultural interactions on the Silk Road"),
-        ("goods", "Trade goods moving along Silk Road routes"),
-        ("religion", "Religious diffusion on the Silk Road"),
-        ("northern", "Northern Silk Road route"),
-        ("southern", "Southern Silk Road route"),
-        ("trade", "Trade networks of the Silk Road"),
-        ("empire", "Empires along the Silk Road"),
+        ("mongol", "Mongol unification of the Silk Roads"),
+        ("abbasid", "Abbasid revival of the Silk Roads"),
+        ("caravan", "Caravans and transportation on the Silk Roads"),
+        ("kashgar", "Trade cities of the Silk Roads"),
+        ("samarkand", "Trade cities of the Silk Roads"),
+        ("flying cash", "Commercial innovations of the Silk Roads"),
+        ("bill of exchange", "Commercial innovations of the Silk Roads"),
+        ("hanseatic", "European commercial innovations"),
+        ("demand", "Rising demand and production on the Silk Roads"),
+        ("trade", "Trade networks of the Silk Roads"),
     ],
 }
 
@@ -179,6 +230,12 @@ def save_persisted_state():
         "hint_given_this_question": st.session_state.get("hint_given_this_question", False),
         "current_hint_policy": st.session_state.get("current_hint_policy"),
         "message_feedback": st.session_state.get("message_feedback", {}),
+        "pre_quiz_answers": st.session_state.get("pre_quiz_answers", {}),
+        "pre_quiz_score": st.session_state.get("pre_quiz_score"),
+        "pre_quiz_completed": st.session_state.get("pre_quiz_completed", False),
+        "post_quiz_answers": st.session_state.get("post_quiz_answers", {}),
+        "post_quiz_score": st.session_state.get("post_quiz_score"),
+        "post_quiz_completed": st.session_state.get("post_quiz_completed", False),
     }
     try:
         with STATE_FILE.open("w", encoding="utf-8") as f:
@@ -274,15 +331,12 @@ def init_state():
         "personality": persisted.get("personality", "Socratic"),
         "awaiting_answer": False,
         "question_type": None,
-        "pdf_uploaded": False,
-        "pdf_file_ref": None,
         "current_topic": persisted.get("current_topic", "General Tutoring"),
         "chat_session": None,
         "chat_session_personality": None,
-        "chat_session_pdf_id": None,
         "intro_sent": persisted.get("intro_sent", False),
         "current_concept": persisted.get("current_concept", LEARNING_CONCEPTS[0]["key"]),
-        "current_subtopic": persisted.get("current_subtopic", "origins_expansion"),
+        "current_subtopic": persisted.get("current_subtopic", "causes_of_growth"),
         "concept_progress": default_concept_progress,
         "subtopic_progress": default_subtopic_progress,
         "learning_point_progress": persisted.get("learning_point_progress", {}),
@@ -314,6 +368,13 @@ def init_state():
         "message_feedback": persisted.get("message_feedback", {}),
         # New: Track the last question asked to avoid repeats
         "last_question_asked": None,
+        # Pre-/post-quiz diagnostic and assessment results
+        "pre_quiz_answers": persisted.get("pre_quiz_answers", {}),
+        "pre_quiz_score": persisted.get("pre_quiz_score"),
+        "pre_quiz_completed": persisted.get("pre_quiz_completed", False),
+        "post_quiz_answers": persisted.get("post_quiz_answers", {}),
+        "post_quiz_score": persisted.get("post_quiz_score"),
+        "post_quiz_completed": persisted.get("post_quiz_completed", False),
     }
     for key, value in defaults.items():
         if key not in st.session_state:
@@ -371,18 +432,17 @@ def award_xp(amount: int = 15, reason: str = "", skip_rerun: bool = False):
     if new_level > st.session_state.level:
         st.session_state.level = new_level
         leveled_up = True
-    
-    # Show visible XP notification
+
     if reason:
-        st.success(f"🌟 **+{amount} XP** earned: {reason}")
-        st.toast(f"+{amount} XP: {reason}", icon="⭐")
-    
+        st.success(f"**+{amount} XP** earned: {reason}")
+        st.toast(f"+{amount} XP: {reason}")
+
     save_persisted_state()
-    
+
     if leveled_up:
         st.balloons()
-        st.success(f"🎉 **Level Up!** You're now level {new_level}!")
-    
+        st.success(f"**Level Up!** You're now level {new_level}!")
+
     if not skip_rerun:
         st.rerun()
 
@@ -445,18 +505,6 @@ def get_ai_model():
             pass
     
     return None
-
-def upload_pdf_to_gemini(pdf_path: str):
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key or genai is None:
-        return None
-    try:
-        genai.configure(api_key=api_key)
-        uploaded_file = genai.upload_file(pdf_path)
-        return uploaded_file
-    except Exception as e:
-        st.error(f"Error uploading PDF: {e}")
-        return None
 
 PERSONALITY_PROMPTS = {
     "Socratic": '''You are a Socratic-style history tutor who guides students through layered questioning so they uncover answers themselves.
@@ -685,7 +733,7 @@ def mark_subtopic_mastered(key: str):
             next_key = subtopics[index + 1]["key"]
             unlock_subtopic(next_key)
             st.session_state.current_subtopic = next_key
-            st.toast("New subtopic unlocked!", icon="🚀")
+            st.toast("New subtopic unlocked!")
         save_persisted_state()
 
 
@@ -846,9 +894,9 @@ def record_user_feedback(message_idx: int, feedback: str):
     
     # Show subtle acknowledgment
     if feedback == "up":
-        st.toast("Thanks for the feedback!", icon="👍")
+        st.toast("Thanks for the feedback!")
     else:
-        st.toast("Thanks - we'll try to improve!", icon="👎")
+        st.toast("Thanks — we'll try to improve!")
 
 
 def get_feedback_stats() -> Dict:
@@ -997,7 +1045,7 @@ def refresh_topic_periodically():
         st.session_state.topic_refresh_counter = 0
 
 
-def build_tutor_context(personality: str, pdf_ref=None, continuation_context: str = None) -> str:
+def build_tutor_context(personality: str, continuation_context: str = None) -> str:
     """Build context for tutor, with optional continuation context after XP award."""
     base_prompt = get_personality_prompt(personality)
     
@@ -1063,12 +1111,6 @@ def build_tutor_context(personality: str, pdf_ref=None, continuation_context: st
                             context += f"\n{i}. {point}"
                         context += "\n\nStay focused on these points. Do not add extra details or explore tangents."
     
-    if pdf_ref:
-        context += (
-            "\n\nCURRICULUM INTEGRATION: Use the uploaded PDF only as background knowledge. "
-            "Summarise or paraphrase ideas in fresh language. Never quote the PDF verbatim."
-        )
-    
     active_concept = get_concept()
     if active_concept:
         context += (
@@ -1087,42 +1129,56 @@ def build_tutor_context(personality: str, pdf_ref=None, continuation_context: st
     return context
 
 
-def chat_with_tutor(model_info, personality: str, user_message: str, pdf_ref=None, continuation_prompt: str = None) -> str:
+def _prior_turns(user_message: str):
+    """Past conversation turns, excluding a trailing entry that duplicates the message about to be sent."""
+    past_messages = list(st.session_state.get("messages", []))
+    if past_messages:
+        last = past_messages[-1]
+        last_role = last.role if isinstance(last, Message) else last.get("role")
+        last_content = last.content if isinstance(last, Message) else last.get("content")
+        if last_role == "user" and last_content == user_message:
+            past_messages = past_messages[:-1]
+    turns = []
+    for msg in past_messages:
+        role = msg.role if isinstance(msg, Message) else msg.get("role")
+        content = msg.content if isinstance(msg, Message) else msg.get("content")
+        if role in ("user", "assistant"):
+            turns.append((role, content))
+    return turns
+
+
+def chat_with_tutor(model_info, personality: str, user_message: str, continuation_prompt: str = None) -> str:
     """Chat with the tutor model with defensive error handling.
-    
-    Supports both Groq and Gemini providers.
+
+    Supports both Groq and Gemini providers. Conversation history carries over
+    even when the tutor mode (personality/model) changes mid-chat.
     """
     if model_info is None:
         return "(Error: AI model not initialized. Please check your GROQ_API_KEY or GEMINI_API_KEY configuration and try again.)"
-    
+
     provider = model_info["provider"]
-    
+
     try:
         # Build system context
-        system_context = build_tutor_context(personality, pdf_ref, continuation_prompt)
-        
+        system_context = build_tutor_context(personality, continuation_prompt)
+
         if provider == "groq":
             # Groq uses OpenAI-style chat completions
             client = model_info["client"]
             model_name = model_info["model"]
-            
+
             # Build message history
             messages = [{"role": "system", "content": system_context}]
-            
-            # Add conversation history
-            for msg in st.session_state.get("messages", []):
-                role = msg.role if isinstance(msg, Message) else msg.get("role")
-                content = msg.content if isinstance(msg, Message) else msg.get("content")
-                if role in ["user", "assistant"]:
-                    messages.append({"role": role, "content": content})
-            
+            for role, content in _prior_turns(user_message):
+                messages.append({"role": role, "content": content})
+
             # Add current message
             if continuation_prompt:
                 user_message_with_context = f"{user_message}\n\n[SYSTEM NOTE: {continuation_prompt}]"
                 messages.append({"role": "user", "content": user_message_with_context})
             else:
                 messages.append({"role": "user", "content": user_message})
-            
+
             # Call Groq API
             response = client.chat.completions.create(
                 model=model_name,
@@ -1130,50 +1186,46 @@ def chat_with_tutor(model_info, personality: str, user_message: str, pdf_ref=Non
                 temperature=0.7,
                 max_tokens=2000,
             )
-            
+
             reply_text = response.choices[0].message.content
-            
+
             if not reply_text or reply_text.strip() == "":
                 st.error("Tutor generated an empty response. Please try again.")
                 return "I'm having trouble generating a response right now. Could you please rephrase your question or try again?"
-            
+
             return reply_text
-        
+
         elif provider == "gemini":
             # Gemini uses its own session-based approach
             model = model_info["model"]
-            pdf_id = getattr(pdf_ref, "name", None) or getattr(pdf_ref, "uri", None)
             chat = st.session_state.get("chat_session")
             needs_reset = (
                 chat is None
                 or st.session_state.get("chat_session_personality") != personality
-                or st.session_state.get("chat_session_pdf_id") != pdf_id
             )
 
             if needs_reset:
                 chat_history = [{"role": "user", "parts": [system_context]}]
+                for role, content in _prior_turns(user_message):
+                    chat_history.append({"role": "user" if role == "user" else "model", "parts": [content]})
                 chat = model.start_chat(history=chat_history)
                 st.session_state.chat_session = chat
                 st.session_state.chat_session_personality = personality
-                st.session_state.chat_session_pdf_id = pdf_id
 
             message_to_send = user_message
             if continuation_prompt:
                 message_to_send = f"{user_message}\n\n[SYSTEM NOTE: {continuation_prompt}]"
 
-            if pdf_ref:
-                response = chat.send_message([message_to_send, pdf_ref])
-            else:
-                response = chat.send_message(message_to_send)
+            response = chat.send_message(message_to_send)
 
             reply_text = getattr(response, "text", "") or ""
-            
+
             if not reply_text or reply_text.strip() == "":
                 st.error("Tutor generated an empty response. Please try again.")
                 return "I'm having trouble generating a response right now. Could you please rephrase your question or try again?"
-            
+
             return reply_text
-        
+
         else:
             return f"Unknown provider: {provider}"
     
@@ -1244,7 +1296,6 @@ def ensure_initial_tutor_message(model_info):
                 model_info,
                 personality,
                 prompt,
-                st.session_state.pdf_file_ref,
             )
         
         if not reply or reply.strip() == "":
@@ -1277,10 +1328,32 @@ def ensure_initial_tutor_message(model_info):
     save_persisted_state()
 
 
-def check_answer_quality(user_answer: str, question_type: str, personality: str):
+_NAV_COMMANDS = {
+    "continue", "next", "ok", "okay", "yes", "sure", "ready",
+    "i'm ready", "im ready", "i am ready", "ready for quiz",
+    "i'm ready for the quiz", "let's go", "lets go", "got it",
+    "start", "begin", "go", "quiz me", "quiz",
+}
+
+def check_answer_quality(user_answer: str, question_type: str, personality: str,
+                         from_button: bool = False):
+    if from_button:
+        return False, 0, ""
+
     words = user_answer.strip().split()
     bp = base_personality(personality)
-    if len(words) < 2:
+    word_count = len(words)
+    lower_answer = user_answer.lower().strip()
+    cleaned = " ".join(lower_answer.split())
+
+    # Never award XP for navigation/command messages
+    if cleaned in _NAV_COMMANDS or word_count < 4:
+        return False, 0, ""
+
+    # Never award for "I don't know" variants
+    no_clue = {"idk", "no idea", "not sure", "no clue"}
+    no_clue_subs = {"i don't know", "i dont know", "dont know", "don't know"}
+    if cleaned in no_clue or any(s in cleaned for s in no_clue_subs):
         return False, 0, ""
 
     if bp == "Direct" and question_type == "quiz":
@@ -1288,29 +1361,19 @@ def check_answer_quality(user_answer: str, question_type: str, personality: str)
             st.session_state.quiz_mode = True
             st.session_state.quiz_score = 0
             st.session_state.quiz_total = 0
-
-        if len(words) >= 3:
-            return True, 25, "Quiz question"
+        # Require a substantive answer (at least 8 words), not just "yes it was"
+        if word_count >= 8:
+            return True, 25, "Quiz answer"
         return False, 0, ""
 
     if question_type == "quiz":
-        return True, 25, "Quiz mastery"
-
-    lower_answer = user_answer.lower()
-    word_count = len(words)
-    cleaned = " ".join(lower_answer.split()).strip()
-    exact_invalid = {
-        "idk", "i don't know", "i dont know", "no idea",
-        "not sure", "no clue", "?", "??", "???",
-    }
-    substring_invalid = {
-        "i don't know", "i dont know", "dont know", "don't know",
-    }
-    if cleaned in exact_invalid or any(sub in cleaned for sub in substring_invalid):
+        if word_count >= 8:
+            return True, 25, "Quiz mastery"
         return False, 0, ""
 
     if bp == "Socratic":
-        if word_count >= 6:
+        # Require 10+ words for a genuinely thoughtful Socratic response
+        if word_count >= 10:
             return True, 10, "Thoughtful response"
         return False, 0, ""
 
@@ -1330,7 +1393,7 @@ def render_feedback_buttons(message_idx: int):
         up_style = "primary" if current_feedback == "up" else "secondary"
         up_disabled = current_feedback is not None
         if st.button(
-            "👍",
+            "Helpful",
             key=f"thumbs_up_{message_idx}",
             type=up_style,
             disabled=up_disabled,
@@ -1344,7 +1407,7 @@ def render_feedback_buttons(message_idx: int):
         down_style = "primary" if current_feedback == "down" else "secondary"
         down_disabled = current_feedback is not None
         if st.button(
-            "👎",
+            "Not helpful",
             key=f"thumbs_down_{message_idx}",
             type=down_style,
             disabled=down_disabled,
@@ -1375,7 +1438,7 @@ def render_concept_tracker():
     html_parts = ["<div style='font-size:0.82em;line-height:1.6;'>"]
     for subtopic, key, progress, is_current, learning_points, total, completed, active_idx in rows:
         if progress.get("mastered"):
-            icon = "✅"
+            icon = "✓"
             title_color = "#2e7d32"
             bg = "#f1f8f1"
             border = "#a5d6a7"
@@ -1390,7 +1453,7 @@ def render_concept_tracker():
             bg = "#fafafa"
             border = "#ddd"
         else:
-            icon = "🔒"
+            icon = "–"
             title_color = "#aaa"
             bg = "#f5f5f5"
             border = "#eee"
@@ -1438,7 +1501,7 @@ def sidebar_nav():
         st.caption(f"Welcome, **{username}**!")
         
         st.markdown("### Navigate")
-        col1, col2 = st.columns(2)
+        col1, col2, col3 = st.columns(3)
         with col1:
             if st.button("Home", use_container_width=True, type="primary" if st.session_state.page == "User Home" else "secondary"):
                 st.session_state.page = "User Home"
@@ -1446,6 +1509,10 @@ def sidebar_nav():
         with col2:
             if st.button("Chat", use_container_width=True, type="primary" if st.session_state.page == "Tutoring Chat" else "secondary"):
                 st.session_state.page = "Tutoring Chat"
+                st.rerun()
+        with col3:
+            if st.button("Quiz", use_container_width=True, type="primary" if st.session_state.page == "Quiz" else "secondary"):
+                st.session_state.page = "Quiz"
                 st.rerun()
         
         st.divider()
@@ -1476,17 +1543,11 @@ def sidebar_nav():
                 with btn_col:
                     _clicked = st.button(f"{p}", use_container_width=True, type=button_type, key=f"personality_{p}")
                 if _clicked and p != st.session_state.personality:
+                    # Switching tutor mode changes which model/prompt answers,
+                    # but stays in the same chat: history, topic, and progress
+                    # are preserved. chat_with_tutor() detects the mode change
+                    # and carries the conversation over to the new session.
                     st.session_state.personality = p
-                    st.session_state.chat_session = None
-                    st.session_state.chat_session_personality = None
-                    st.session_state.chat_session_pdf_id = None
-                    st.session_state.messages = []
-                    st.session_state.awaiting_answer = False
-                    st.session_state.question_type = None
-                    st.session_state.current_topic = "General Tutoring"
-                    st.session_state.intro_sent = False
-                    st.session_state.message_feedback = {}
-                    st.session_state.last_question_asked = None
                     save_persisted_state()
                     st.rerun()
 
@@ -1506,7 +1567,7 @@ def sidebar_nav():
         feedback_stats = get_feedback_stats()
         if feedback_stats["total"] > 0:
             st.markdown("### Your Feedback")
-            st.caption(f"👍 {feedback_stats['positive']} • 👎 {feedback_stats['negative']}")
+            st.caption(f"Helpful: {feedback_stats['positive']} · Not helpful: {feedback_stats['negative']}")
             st.caption(f"Satisfaction: {feedback_stats['rate']}%")
             st.divider()
         
@@ -1590,32 +1651,32 @@ def page_home():
             
             # Badges based on actual achievements
             if st.session_state.level >= 2:
-                badges.append("🎯 Focused Learner")
+                badges.append("Focused Learner")
             if st.session_state.level >= 5:
-                badges.append("📚 Knowledge Seeker")
+                badges.append("Knowledge Seeker")
             if st.session_state.xp >= 100:
-                badges.append("💯 Century Club")
-            
+                badges.append("Century Club")
+
             # Check if user has completed any subtopics
-            mastered_count = sum(1 for progress in st.session_state.subtopic_progress.values() 
+            mastered_count = sum(1 for progress in st.session_state.subtopic_progress.values()
                                if progress.get("mastered", False))
             if mastered_count >= 1:
-                badges.append("✅ First Mastery")
+                badges.append("First Mastery")
             if mastered_count >= 3:
-                badges.append("🌟 Master Scholar")
-            
+                badges.append("Master Scholar")
+
             # Check for engagement badges
             questions_answered = len([m for m in st.session_state.messages if m.role == "user"])
             if questions_answered >= 10:
-                badges.append("💬 Engaged Learner")
+                badges.append("Engaged Learner")
             if questions_answered >= 50:
-                badges.append("🚀 Learning Champion")
-            
+                badges.append("Learning Champion")
+
             if badges:
                 for badge in badges:
                     st.write(badge)
             else:
-                st.caption("🏆 Earn badges by learning with your tutor!")
+                st.caption("Earn badges by learning with your tutor!")
                 st.caption("• Reach level 2 for your first badge")
                 st.caption("• Complete subtopics to unlock more")
         st.markdown("\n")
@@ -1637,46 +1698,148 @@ def page_home():
     st.caption("Start your learning journey and build your daily streak!")
     
     # Daily streak tracker (automatic, not clickable)
-    st.markdown("### 🔥 Daily Streak")
+    st.markdown("### Daily Streak")
     col_streak1, col_streak2 = st.columns([1, 3])
     with col_streak1:
         st.metric("Current Streak", "0 days", help="Complete at least one learning session daily to build your streak")
     with col_streak2:
-        st.caption("💡 **Tip:** Answer questions with your tutor to maintain your streak and earn XP!")
-    
+        st.caption("**Tip:** Answer questions with your tutor to maintain your streak and earn XP!")
+
     st.markdown("\n")
     st.markdown("### Quick Start Learning")
     a1, a2, a3 = st.columns(3)
     with a1:
-        if st.button("🧠 Start Practice Session", use_container_width=True, type="primary"):
+        if st.button("Start Practice Session", use_container_width=True, type="primary"):
             st.session_state.page = "Tutoring Chat"
             st.session_state.challenge_active = False
-            st.toast("Let's practice! Answer questions to earn XP.", icon="🎓")
+            st.toast("Let's practice! Answer questions to earn XP.")
             st.rerun()
     with a2:
-        if st.button("📚 Begin New Lesson", use_container_width=True):
+        if st.button("Begin New Lesson", use_container_width=True):
             st.session_state.page = "Tutoring Chat"
             st.session_state.challenge_active = False
             # Reset to start fresh lesson
             st.session_state.messages = []
             st.session_state.intro_sent = False
             st.session_state.chat_session = None
-            st.toast("Starting new lesson! Engage with the tutor to earn XP.", icon="📖")
+            st.toast("Starting new lesson!")
             st.rerun()
     with a3:
-        if st.button("⚡ Challenge Question", use_container_width=True):
+        if st.button("Challenge Question", use_container_width=True):
             st.session_state.page = "Tutoring Chat"
             st.session_state.challenge_active = True
-            st.toast("Challenge armed! Answer correctly for bonus XP.", icon="⚡")
+            st.toast("Challenge armed! Answer correctly for bonus XP.")
             save_persisted_state()
             st.rerun()
 
     st.info(
-        "💎 **Earn XP by learning!** Use a Gamified tutor mode and answer questions:\n"
+        "**Earn XP by learning!** Use a Gamified tutor mode and answer questions:\n"
         "- Socratic Gamified: 10 XP per thoughtful answer\n"
         "- Direct Gamified: 25 XP per quiz question\n"
         "- Challenge bonus: +10 XP extra"
     )
+
+    st.markdown("\n")
+    st.markdown("### Check Your Knowledge")
+    q1, q2 = st.columns(2)
+    with q1:
+        pre_label = "Retake Pre-Quiz" if st.session_state.get("pre_quiz_completed") else "Take Pre-Quiz"
+        if st.button(pre_label, use_container_width=True, help="A quick diagnostic before you start learning — no XP, just a baseline."):
+            st.session_state.page = "Quiz"
+            st.session_state.quiz_tab = "pre"
+            st.rerun()
+    with q2:
+        post_label = "Retake Post-Quiz" if st.session_state.get("post_quiz_completed") else "Take Post-Quiz"
+        if st.button(post_label, use_container_width=True, help="An assessment after learning — correct answers earn XP in Gamified modes."):
+            st.session_state.page = "Quiz"
+            st.session_state.quiz_tab = "post"
+            st.rerun()
+
+
+def _grade_quiz(answers: Dict[int, int]) -> int:
+    score = 0
+    for idx, q in enumerate(QUIZ_BANK):
+        if answers.get(idx) == q["answer"]:
+            score += 1
+    return score
+
+
+def _render_quiz_form(prefix: str, award_on_correct: bool):
+    """Render one pre- or post-quiz form. prefix is 'pre' or 'post'."""
+    completed_key = f"{prefix}_quiz_completed"
+    answers_key = f"{prefix}_quiz_answers"
+    score_key = f"{prefix}_quiz_score"
+
+    if st.session_state.get(completed_key):
+        score = st.session_state.get(score_key) or 0
+        st.success(f"You scored **{score}/{len(QUIZ_BANK)}** on the {prefix}-quiz.")
+        for idx, q in enumerate(QUIZ_BANK):
+            chosen = st.session_state.get(answers_key, {}).get(str(idx), st.session_state.get(answers_key, {}).get(idx))
+            correct = chosen == q["answer"]
+            with st.expander(f"{'Correct' if correct else 'Missed'} — {q['question']}"):
+                st.write(f"Your answer: {q['options'][chosen] if chosen is not None else 'No answer'}")
+                if not correct:
+                    st.write(f"Correct answer: {q['options'][q['answer']]}")
+        if st.button(f"Retake {prefix.title()}-Quiz", key=f"retake_{prefix}"):
+            st.session_state[completed_key] = False
+            st.session_state[answers_key] = {}
+            st.session_state[score_key] = None
+            save_persisted_state()
+            st.rerun()
+        return
+
+    with st.form(key=f"{prefix}_quiz_form"):
+        responses = {}
+        for idx, q in enumerate(QUIZ_BANK):
+            responses[idx] = st.radio(
+                f"{idx + 1}. {q['question']}",
+                options=list(range(len(q["options"]))),
+                format_func=lambda i, opts=q["options"]: opts[i],
+                index=None,
+                key=f"{prefix}_q_{idx}",
+            )
+        submitted = st.form_submit_button("Submit")
+
+    if submitted:
+        if any(v is None for v in responses.values()):
+            st.warning("Answer every question before submitting.")
+            return
+        score = _grade_quiz(responses)
+        st.session_state[answers_key] = {str(k): v for k, v in responses.items()}
+        st.session_state[score_key] = score
+        st.session_state[completed_key] = True
+        save_persisted_state()
+        if award_on_correct and score > 0 and is_gamified(st.session_state.get("personality")):
+            award_xp(score * 15, f"Post-quiz: {score}/{len(QUIZ_BANK)} correct", skip_rerun=True)
+        st.rerun()
+
+
+def page_quiz():
+    st.title("Pre- and Post-Quiz")
+    st.caption("A fixed, auto-graded checkpoint on the Silk Roads curriculum — take it before and after learning to see how much you've gained.")
+
+    tab_options = ["Pre-Quiz (diagnostic)", "Post-Quiz (assessment)"]
+    default_index = 1 if st.session_state.get("quiz_tab") == "post" else 0
+    selected = st.radio("Which quiz?", tab_options, index=default_index, horizontal=True, label_visibility="collapsed")
+    st.session_state.quiz_tab = "post" if selected == tab_options[1] else "pre"
+    st.divider()
+
+    if st.session_state.quiz_tab == "pre":
+        st.markdown("Take this **before** you start learning. It measures your starting point — no XP is awarded.")
+        _render_quiz_form("pre", award_on_correct=False)
+    else:
+        st.markdown("Take this **after** learning to check what you've retained. Correct answers earn XP in Gamified tutor modes.")
+        _render_quiz_form("post", award_on_correct=True)
+
+    if st.session_state.get("pre_quiz_completed") and st.session_state.get("post_quiz_completed"):
+        st.divider()
+        st.subheader("Your Progress")
+        pre_score = st.session_state.get("pre_quiz_score") or 0
+        post_score = st.session_state.get("post_quiz_score") or 0
+        delta = post_score - pre_score
+        c1, c2 = st.columns(2)
+        c1.metric("Pre-Quiz Score", f"{pre_score}/{len(QUIZ_BANK)}")
+        c2.metric("Post-Quiz Score", f"{post_score}/{len(QUIZ_BANK)}", delta=delta)
 
 
 def page_chat():
@@ -1695,154 +1858,82 @@ def page_chat():
         st.error("AI API key not configured. Please set GROQ_API_KEY or GEMINI_API_KEY in your environment or Streamlit secrets.")
         return
     
-    # Show which provider is being used
-    provider = model_info.get("provider", "unknown")
-    if provider == "groq":
-        st.caption("🚀 Using Groq (Llama 3.1 70B)")
-    elif provider == "gemini":
-        st.caption("✨ Using Google Gemini")
-
-    with st.expander("Upload Curriculum (PDF)", expanded=not st.session_state.pdf_uploaded):
-        uploaded_file = st.file_uploader(
-            "Upload a PDF for the tutor to reference",
-            type=["pdf"],
-            help="The tutor will use this document"
-        )
-        
-        if uploaded_file and not st.session_state.pdf_uploaded:
-            pdf_path = f"/tmp/{uploaded_file.name}"
-            with open(pdf_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            
-            with st.spinner("Uploading PDF..."):
-                pdf_ref = upload_pdf_to_gemini(pdf_path)
-                if pdf_ref:
-                    st.session_state.pdf_file_ref = pdf_ref
-                    st.session_state.pdf_uploaded = True
-                    st.session_state.chat_session = None
-                    st.session_state.chat_session_personality = None
-                    st.session_state.chat_session_pdf_id = None
-                    st.session_state.messages = []
-                    st.session_state.awaiting_answer = False
-                    st.session_state.question_type = None
-                    st.session_state.current_topic = "General Tutoring"
-                    st.session_state.intro_sent = False
-                    st.session_state.topic_refresh_counter = 0
-                    st.session_state.message_feedback = {}
-                    st.session_state.last_question_asked = None
-                    save_persisted_state()
-                    st.success(f"PDF uploaded: {uploaded_file.name}")
-                    st.rerun()
-    
-    local_pdf = Path("/Users/alishajain/Gamified_app/silk_roads.pdf")
-    if local_pdf.exists() and not st.session_state.pdf_uploaded:
-        if st.button("Load Silk Roads Curriculum"):
-            with st.spinner("Loading curriculum..."):
-                pdf_ref = upload_pdf_to_gemini(str(local_pdf))
-                if pdf_ref:
-                    st.session_state.pdf_file_ref = pdf_ref
-                    st.session_state.pdf_uploaded = True
-                    st.session_state.chat_session = None
-                    st.session_state.chat_session_personality = None
-                    st.session_state.chat_session_pdf_id = None
-                    st.session_state.messages = []
-                    st.session_state.awaiting_answer = False
-                    st.session_state.question_type = None
-                    st.session_state.current_topic = "General Tutoring"
-                    st.session_state.intro_sent = False
-                    st.session_state.topic_refresh_counter = 0
-                    st.session_state.message_feedback = {}
-                    st.session_state.last_question_asked = None
-                    save_persisted_state()
-                    st.success("Curriculum loaded!")
-                    st.rerun()
-
     chip_query = None
     chip_topic = None
 
-    st.markdown("#### Silk Road Learning Routes")
-    
     active_concept = get_concept()
     if st.session_state.current_topic in ("General Tutoring", "", None):
         st.session_state.current_topic = active_concept["title"]
-    st.caption(f"{active_concept['description']}")
 
-    primer_col, challenge_col = st.columns([1, 1])
-    with primer_col:
-        if st.button("Route primer", use_container_width=True, help="Get an overview and learning roadmap for the Silk Road topic"):
-            chip_query = active_concept["starter"]
-            chip_topic = active_concept["title"]
-    with challenge_col:
-        if st.button("Challenge Question", use_container_width=True, help="Get a tough synthesis question on everything discussed"):
-            challenge_prompt = "Give me a challenge question on everything we've discussed in this chat so far. This should test deep synthesis and understanding across multiple concepts."
-            
-            st.session_state.messages.append(Message(role="user", content=challenge_prompt, metadata=None))
-            save_persisted_state()
-            
-            try:
-                with st.spinner("Preparing challenge question..."):
-                    reply = chat_with_tutor(model_info, personality, challenge_prompt, st.session_state.pdf_file_ref)
-                
-                if not reply or reply.strip() == "":
-                    reply = "Here's a challenge question: How did the geographic, political, and cultural factors of the Silk Road interact to shape the flow of trade and ideas between East and West?"
-            except Exception as e:
-                st.error(f"Chat error: {e}")
-                reply = f"I encountered an error: {e}. Here's a backup challenge: How did the Silk Road transform both Eastern and Western civilizations?"
-            
-            clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
-            
-            msg_metadata = {
-                "question_type": question_type,
-                "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
-                "personality": personality,
-            }
-            st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata=msg_metadata))
-            
-            st.session_state.awaiting_answer = True
-            st.session_state.question_type = question_type or "quiz"
-            st.session_state.challenge_active = True
-            st.session_state.current_hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
-            st.session_state.hint_given_this_question = False
-            save_persisted_state()
-            st.rerun()
-
-    st.markdown("##### Quick starts:")
-    pp1, pp2, pp3, pp4 = st.columns([1.4, 1.6, 1.8, 2])
-    
     _socratic_starts = [
-        ("Northern Route", "Guide me through the northern Silk Road route with questions."),
-        ("Trade Goods", "Help me reason through what goods were traded on the Silk Road."),
-        ("Cultural Exchange", "Ask me guiding questions about cultural exchange on the Silk Road.")
+        ("Route primer",      active_concept["starter"],
+         "Why Silk Road trade revived after centuries of decline — good starting point."),
+        ("Challenge Question", None,
+         "A tough synthesis question drawing on everything discussed so far."),
+        ("Causes of Growth",  "Guide me with questions through why Silk Road trade revived after Rome and Han China collapsed.",
+         "Crusade-driven demand, the Abbasid revival, and the Mongol unification of 1258 onward."),
+        ("Trade Cities",      "Ask me guiding questions about how caravans, camel saddles, and cities like Kashgar and Samarkand made overland trade possible.",
+         "Caravans, camel saddles, caravanserai, and the river-watered cities that anchored the routes."),
+        ("Commercial Innovations", "Help me reason through the financial tools that let merchants move value across long distances.",
+         "Flying cash, bills of exchange, banking houses, and the Hanseatic League."),
+        ("Surprise me",       None,
+         "Get an unexpected angle or question to spark a new line of thinking."),
     ]
     _direct_starts = [
-        ("Silk Road Origins", "Teach me about the origins and expansion of the Silk Road."),
-        ("Route Comparison", "Walk me through the northern vs. southern Silk Road routes."),
-        ("Political Powers", "Give me a clear outline of empires controlling the Silk Road.")
+        ("Route primer",      active_concept["starter"],
+         "Why Silk Road trade revived after centuries of decline — good starting point."),
+        ("Challenge Question", None,
+         "A tough synthesis question drawing on everything discussed so far."),
+        ("Causes of Growth",  "Teach me why Silk Road trade revived after Rome and Han China collapsed, including the Mongol Empire's role.",
+         "Crusade-driven demand, the Abbasid revival, and the Mongol unification of 1258 onward."),
+        ("Trade Cities",      "Walk me through how caravans, camel saddles, and cities like Kashgar and Samarkand made overland trade possible.",
+         "Caravans, camel saddles, caravanserai, and the river-watered cities that anchored the routes."),
+        ("Rising Demand",     "Give me a clear outline of how rising demand for luxury goods reshaped production in China and Europe.",
+         "Expanded silk and porcelain production, iron and steel manufacturing, and the commerce timeline."),
+        ("Surprise me",       None,
+         "Get an unexpected angle or question to spark a new line of thinking."),
     ]
-    quick_starts = {
-        "Socratic": _socratic_starts,
-        "Socratic Gamified": _socratic_starts,
-        "Direct": _direct_starts,
-        "Direct Gamified": _direct_starts,
-    }
+    starts = _socratic_starts if base_personality(personality) == "Socratic" else _direct_starts
 
-    starts = quick_starts.get(personality, _direct_starts)
-    with pp1:
-        if st.button(starts[0][0], use_container_width=True):
-            chip_query = starts[0][1]
-            chip_topic = starts[0][0]
-    with pp2:
-        if st.button(starts[1][0], use_container_width=True):
-            chip_query = starts[1][1]
-            chip_topic = starts[1][0]
-    with pp3:
-        if st.button(starts[2][0], use_container_width=True):
-            chip_query = starts[2][1]
-            chip_topic = starts[2][0]
-    with pp4:
-        if st.button("Surprise me", use_container_width=True):
-            chip_query = f"Give me a fresh angle on {active_concept['title']} with a question to get started."
-            chip_topic = active_concept["title"]
+    st.markdown("#### Quick starts")
+    cols = st.columns(3)
+    for i, (label, prompt, description) in enumerate(starts):
+        with cols[i % 3]:
+            clicked = st.button(label, use_container_width=True, key=f"qs_{label}")
+            st.caption(description)
+            if clicked:
+                if label == "Challenge Question":
+                    challenge_prompt = "Give me a challenge question on everything we've discussed in this chat so far. This should test deep synthesis and understanding across multiple concepts."
+                    st.session_state.messages.append(Message(role="user", content=challenge_prompt, metadata=None))
+                    save_persisted_state()
+                    try:
+                        with st.spinner("Preparing challenge question..."):
+                            reply = chat_with_tutor(model_info, personality, challenge_prompt)
+                        if not reply or reply.strip() == "":
+                            reply = "Here's a challenge question: How did the geographic, political, and cultural factors of the Silk Road interact to shape the flow of trade and ideas between East and West?"
+                    except Exception as e:
+                        st.error(f"Chat error: {e}")
+                        reply = f"I encountered an error: {e}. Here's a backup challenge: How did the Silk Road transform both Eastern and Western civilizations?"
+                    clean_reply, question_type, mastered_episode, subtopic_complete = parse_tutor_response(reply)
+                    msg_metadata = {
+                        "question_type": question_type,
+                        "hint_policy": st.session_state.get("hint_policy", "LIGHT_HINTS"),
+                        "personality": personality,
+                    }
+                    st.session_state.messages.append(Message(role="assistant", content=clean_reply, metadata=msg_metadata))
+                    st.session_state.awaiting_answer = True
+                    st.session_state.question_type = question_type or "quiz"
+                    st.session_state.challenge_active = True
+                    st.session_state.current_hint_policy = st.session_state.get("hint_policy", "LIGHT_HINTS")
+                    st.session_state.hint_given_this_question = False
+                    save_persisted_state()
+                    st.rerun()
+                elif label == "Surprise me":
+                    chip_query = f"Give me a fresh angle on {active_concept['title']} with a question to get started."
+                    chip_topic = active_concept["title"]
+                else:
+                    chip_query = prompt
+                    chip_topic = label
     
     ensure_initial_tutor_message(model_info)
 
@@ -1884,7 +1975,7 @@ def page_chat():
                                 
                                 try:
                                     with st.spinner("Tutor is thinking..."):
-                                        reply = chat_with_tutor(model_info, personality, edited_text, st.session_state.pdf_file_ref)
+                                        reply = chat_with_tutor(model_info, personality, edited_text)
                                     
                                     if not reply or reply.strip() == "":
                                         reply = "I'm having trouble generating a response. Could you please try rephrasing your question?"
@@ -1896,7 +1987,7 @@ def page_chat():
                                 
                                 if subtopic_complete:
                                     mark_subtopic_mastered(st.session_state.current_subtopic)
-                                    st.toast("Chapter complete! Subtopic mastered!", icon="🎉")
+                                    st.toast("Subtopic mastered!")
                                 
                                 msg_metadata = {
                                     "question_type": question_type,
@@ -1952,7 +2043,9 @@ def page_chat():
             last_time = st.session_state.get("last_question_time")
             response_time = current_time - last_time if last_time is not None else 0
             
-            is_valid, xp, reason = check_answer_quality(query, pending_type, personality)
+            is_valid, xp, reason = check_answer_quality(
+                query, pending_type, personality, from_button=(chip_query is not None)
+            )
             
             hint_policy = st.session_state.get("current_hint_policy", "LIGHT_HINTS")
             hint_given = st.session_state.get("hint_given_this_question", False)
@@ -2032,7 +2125,7 @@ def page_chat():
                 save_persisted_state()
             else:
                 if st.session_state.challenge_active:
-                    st.toast("Challenge bonus still waiting for a strong answer.", icon="⌛")
+                    st.toast("Challenge bonus still waiting for a strong answer.")
                 st.session_state.question_attempts = st.session_state.get("question_attempts", 0) + 1
             
             st.session_state.awaiting_answer = False
@@ -2045,7 +2138,7 @@ def page_chat():
 
         try:
             with st.spinner("Tutor is thinking..."):
-                reply = chat_with_tutor(model_info, personality, query, st.session_state.pdf_file_ref, continuation_prompt)
+                reply = chat_with_tutor(model_info, personality, query, continuation_prompt)
             
             if not reply or reply.strip() == "":
                 st.error("Tutor generated an empty response")
@@ -2058,7 +2151,7 @@ def page_chat():
         
         if subtopic_complete:
             mark_subtopic_mastered(st.session_state.current_subtopic)
-            st.toast("Chapter complete! Subtopic mastered!", icon="🎉")
+            st.toast("Subtopic mastered!")
         
         # Store metadata including current bandit settings for feedback tracking
         msg_metadata = {
@@ -2082,7 +2175,7 @@ def page_chat():
         if base_personality(personality) == "Socratic" and st.session_state.message_count_for_lp_update >= 3:
             st.session_state.message_count_for_lp_update = 0
             if check_learning_point_understanding():
-                st.toast("Learning point mastered!", icon="✓")
+                st.toast("Learning point mastered!")
         
         save_persisted_state()
         
@@ -2111,7 +2204,7 @@ def page_chat():
                 
                 try:
                     with st.spinner("Tutor is thinking..."):
-                        reply = chat_with_tutor(model_info, personality, query, st.session_state.pdf_file_ref)
+                        reply = chat_with_tutor(model_info, personality, query)
                     
                     if not reply or reply.strip() == "":
                         reply = "Let me continue with the next section of our lesson..."
@@ -2141,7 +2234,7 @@ def page_chat():
                 
                 try:
                     with st.spinner("Preparing quiz..."):
-                        reply = chat_with_tutor(model_info, personality, query, st.session_state.pdf_file_ref)
+                        reply = chat_with_tutor(model_info, personality, query)
                     
                     if not reply or reply.strip() == "":
                         reply = "[QUIZ] Question 1: What was the primary purpose of Zhang Qian's mission to the West?"
@@ -2171,7 +2264,6 @@ def page_chat():
                 st.session_state.current_topic = get_concept()["title"]
                 st.session_state.chat_session = None
                 st.session_state.chat_session_personality = None
-                st.session_state.chat_session_pdf_id = None
                 st.session_state.intro_sent = False
                 st.session_state.challenge_active = False
                 st.session_state.topic_refresh_counter = 0
@@ -2189,7 +2281,6 @@ def page_chat():
                 st.session_state.current_topic = get_concept()["title"]
                 st.session_state.chat_session = None
                 st.session_state.chat_session_personality = None
-                st.session_state.chat_session_pdf_id = None
                 st.session_state.intro_sent = False
                 st.session_state.challenge_active = False
                 st.session_state.topic_refresh_counter = 0
@@ -2276,6 +2367,14 @@ def apply_styles():
             box-shadow: 0 10px 18px rgba(93, 173, 226, 0.2);
             border-color: rgba(93, 173, 226, 0.45);
             background: rgba(93, 173, 226, 0.18);
+        }
+
+        /* Buttons in a row (nav, quick starts) need a tamer radius than the
+           999px pill default, or they wrap into a circle at column width. */
+        div[data-testid="stHorizontalBlock"] .stButton>button[kind="primary"] {
+            border-radius: 10px;
+            padding: 0.5rem 0.75rem;
+            white-space: nowrap;
         }
 
         /* Subtle feedback buttons styling */
@@ -2415,10 +2514,10 @@ def show_login_page():
             # Do NOT save here. Saving before loading from DB can overwrite
             # the user's saved state with defaults/local JSON state.
             reset_state_for_auth(user_id, username.strip())
-            st.success(f"✅ Signed in successfully as {username.strip()}!")
+            st.success(f"Signed in successfully as {username.strip()}!")
             st.rerun()
         else:
-            st.error(f"❌ Invalid username or password. Please check your credentials and try again.")
+            st.error("Invalid username or password. Please check your credentials and try again.")
     
     if register and username and password:
         if len(username.strip()) < 3:
@@ -2431,16 +2530,15 @@ def show_login_page():
                 # Start a brand-new account from clean defaults instead of
                 # copying whatever local JSON/session state happened to exist.
                 reset_state_for_auth(created, username.strip())
-                st.success(f"🎉 Account created and signed in as {username.strip()}!")
+                st.success(f"Account created and signed in as {username.strip()}!")
                 st.rerun()
             else:
-                st.error(f"❌ Could not create account. Username '{username.strip()}' may already exist.")
+                st.error(f"Could not create account. Username '{username.strip()}' may already exist.")
 
 
 def main():
     st.set_page_config(
         page_title="TutorQuest",
-        page_icon="🎓",
         layout="wide",
         initial_sidebar_state="expanded"
     )
@@ -2482,10 +2580,12 @@ def main():
                 for k, v in state.items():
                     if k == "messages":
                         continue
-                    if k in ("xp", "level", "concept_progress", "subtopic_progress", "learning_point_progress", 
-                             "current_concept", "current_subtopic", "current_topic", "personality", 
+                    if k in ("xp", "level", "concept_progress", "subtopic_progress", "learning_point_progress",
+                             "current_concept", "current_subtopic", "current_topic", "personality",
                              "challenge_active", "intro_sent",
-                             "hint_policy", "question_depth", "quiz_difficulty", "bandit_stats", "message_feedback"):
+                             "hint_policy", "question_depth", "quiz_difficulty", "bandit_stats", "message_feedback",
+                             "pre_quiz_answers", "pre_quiz_score", "pre_quiz_completed",
+                             "post_quiz_answers", "post_quiz_score", "post_quiz_completed"):
                         st.session_state[k] = v
                 
             # Mark as loaded even when there is no saved state yet, otherwise
@@ -2498,6 +2598,8 @@ def main():
 
     if st.session_state.page == "User Home":
         page_home()
+    elif st.session_state.page == "Quiz":
+        page_quiz()
     else:
         page_chat()
 
