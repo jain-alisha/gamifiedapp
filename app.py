@@ -600,18 +600,20 @@ Tone: friendly, clear, efficient. Give substantial explanations before moving on
 '''
 }
 
+_FIRST_SUBTOPIC_TITLE = LEARNING_CONCEPTS[0]["subtopics"][0]["title"]
+
 INTRO_PROMPTS = {
     "Socratic": (
         "Welcome! I'll guide you through the Silk Road using the Socratic method. "
         "I'll teach you each concept first with clear information, then ask questions to help you think deeper about what we just learned. "
-        "For each subtopic, I have 4 specific learning points to cover. Let's start with Origins & Expansion. "
+        f"For each subtopic, I have 4 specific learning points to cover. Let's start with {_FIRST_SUBTOPIC_TITLE}. "
         "Ready to begin?"
     ),
     "Direct": (
         "Welcome! I'll teach you about the Silk Road in a clear, structured way. "
         "For each subtopic, I'll present the material in 2 sections, then give you a 3-question quiz. "
         "You'll click 'Continue' between sections and can ask questions anytime. "
-        "You need 3/3 correct to master each subtopic. Let's start with Origins & Expansion. "
+        f"You need 3/3 correct to master each subtopic. Let's start with {_FIRST_SUBTOPIC_TITLE}. "
         "Ready to begin?"
     ),
 }
@@ -1205,9 +1207,18 @@ def chat_with_tutor(model_info, personality: str, user_message: str, continuatio
             )
 
             if needs_reset:
+                # Gemini requires strictly alternating user/model turns. The
+                # leading system-context turn is always "user", so if the
+                # first replayed turn is also "user" (e.g. the conversation's
+                # very first message was sent before any assistant reply),
+                # merge same-role turns instead of emitting them back to back.
                 chat_history = [{"role": "user", "parts": [system_context]}]
                 for role, content in _prior_turns(user_message):
-                    chat_history.append({"role": "user" if role == "user" else "model", "parts": [content]})
+                    mapped_role = "user" if role == "user" else "model"
+                    if chat_history[-1]["role"] == mapped_role:
+                        chat_history[-1]["parts"].append(content)
+                    else:
+                        chat_history.append({"role": mapped_role, "parts": [content]})
                 chat = model.start_chat(history=chat_history)
                 st.session_state.chat_session = chat
                 st.session_state.chat_session_personality = personality
@@ -2237,7 +2248,7 @@ def page_chat():
                         reply = chat_with_tutor(model_info, personality, query)
                     
                     if not reply or reply.strip() == "":
-                        reply = "[QUIZ] Question 1: What was the primary purpose of Zhang Qian's mission to the West?"
+                        reply = "[QUIZ] Question 1: What event most directly caused European demand for Eastern luxury goods to grow?"
                 except Exception as e:
                     st.error(f"Chat error: {e}")
                     reply = f"I encountered an error: {e}. Please try again."
